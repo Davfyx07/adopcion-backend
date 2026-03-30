@@ -1,41 +1,30 @@
 {
-  "name": "recuperaciondecontrase-as",
+  "name": "adopcion-backend",
   "version": "1.0.0",
-  "main": "dist/app.js",
+  "description": "API Backend - Plataforma de Adopción de Mascotas - HU-AUTH-03 Recuperación de Contraseña",
+  "main": "src/index.js",
   "scripts": {
-    "dev": "ts-node-dev --respawn --transpile-only src/app.ts",
-    "build": "tsc",
-    "start": "node dist/app.js",
-    "typecheck": "tsc --noEmit"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js"
   },
+  "type": "commonjs",
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": "API Backend - Plataforma de Adopción de Mascotas - HU-AUTH-03 Recuperación de Contraseña",
   "dependencies": {
     "bcrypt": "^6.0.0",
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
+    "helmet": "^8.1.0",
     "nodemailer": "^8.0.4",
     "pg": "^8.20.0",
-    "reflect-metadata": "^0.2.2",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
-    "typeorm": "^0.3.28",
     "uuid": "^13.0.0"
   },
   "devDependencies": {
-    "@types/bcrypt": "^6.0.0",
-    "@types/cors": "^2.8.19",
-    "@types/express": "^5.0.6",
-    "@types/node": "^25.5.0",
-    "@types/nodemailer": "^7.0.11",
-    "@types/swagger-jsdoc": "^6.0.4",
-    "@types/swagger-ui-express": "^4.1.8",
-    "@types/uuid": "^10.0.0",
-    "ts-node": "^10.9.2",
-    "ts-node-dev": "^2.0.0",
-    "typescript": "^6.0.2"
+    "nodemon": "^3.1.14"
   }
 }
