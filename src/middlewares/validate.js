@@ -45,4 +45,27 @@ const validateRegister = (req, res, next) => {
     next();
 };
 
-module.exports = { validateRegister };
+/**
+ * Middleware de validación para Login (HU-AUTH-02)
+ */
+const validateLogin = (req, res, next) => {
+    const { email, password } = req.body;
+    const errors = [];
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!email || !emailRegex.test(email)) {
+        errors.push({ field: 'email', message: 'El correo no tiene un formato válido.' });
+    }
+
+    if (!password || typeof password !== 'string') {
+        errors.push({ field: 'password', message: 'La contraseña es obligatoria.' });
+    }
+
+    if (errors.length > 0) {
+        return res.status(400).json({ success: false, errors });
+    }
+
+    next();
+};
+
+module.exports = { validateRegister, validateLogin };
