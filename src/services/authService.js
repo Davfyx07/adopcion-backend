@@ -5,8 +5,6 @@ const BCRYPT_COST = 12;
 const TERMS_VERSION = '1.0';
 
 /**
- * Jira — Servicio de Registro
- * - Adapts to BD.md Spanish Database Schema
  * - Atomicidad (BEGIN / COMMIT / ROLLBACK)
  * - Hash password
  */
@@ -21,7 +19,7 @@ const registerUser = async ({ email, password, role, ip }) => {
             'SELECT id_rol FROM Rol WHERE LOWER(nombre_rol) = $1',
             [role.toLowerCase()]
         );
-        
+
         if (roleResult.rows.length === 0) {
             await client.query('ROLLBACK');
             return {
@@ -30,14 +28,14 @@ const registerUser = async ({ email, password, role, ip }) => {
                 message: `El rol '${role}' no es válido o no existe en la base de datos.`,
             };
         }
-        
+
         const idRol = roleResult.rows[0].id_rol;
 
         // 2. Hash bcrypt con costo 12
         const passwordHash = await bcrypt.hash(password, BCRYPT_COST);
 
         let user;
-        
+
         try {
             // 3. Crear Usuario (Manejo Senior de unique constraint)
             const result = await client.query(
