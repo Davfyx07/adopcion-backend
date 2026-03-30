@@ -1,8 +1,8 @@
 const { registerUser } = require('../services/authService');
 
 /**
- * POST /auth/register
- * Jira: Registro exitoso, atómico y respuestas estandarizadas
+ * POST /api/auth/register
+ * Registro exitoso, atómico y respuestas estandarizadas
  */
 const register = async (req, res) => {
     try {
