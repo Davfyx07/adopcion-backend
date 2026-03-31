@@ -1,4 +1,4 @@
-const { registerUser } = require('../services/authService');
+const { registerUser, loginUser } = require('../services/authService');
 
 /**
  * POST /api/auth/register
@@ -35,4 +35,37 @@ const register = async (req, res) => {
     }
 };
 
-module.exports = { register };
+/**
+ * POST /api/auth/login
+ * Maneja el inicio de sesión y la respuesta con JWT
+ */
+const login = async (req, res) => {
+    try {
+        const { email, password } = req.body;
+        const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown';
+
+        const result = await loginUser({ email, password, ip });
+
+        if (!result.success) {
+            return res.status(result.status).json({
+                success: false,
+                message: result.message,
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: 'Inicio de sesión exitoso.',
+            data: result.data,
+        });
+
+    } catch (err) {
+        console.error('[auth.controller] login:', err.message);
+        return res.status(500).json({
+            success: false,
+            message: 'Ocurrió un error al iniciar sesión. Intenta de nuevo más tarde.',
+        });
+    }
+};
+
+module.exports = { register, login };
