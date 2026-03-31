@@ -1,17 +1,17 @@
 {
   "name": "adopcion-backend",
   "version": "1.0.0",
-  "description": "API Backend - Plataforma de Adopción de Mascotas - HU-AUTH-03 Recuperación de Contraseña",
-  "main": "src/index.js",
+  "description": "",
+  "main": "index.js",
   "scripts": {
-    "test": "jest",
+    "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node src/index.js",
     "dev": "nodemon src/index.js"
   },
-  "type": "commonjs",
   "keywords": [],
   "author": "",
   "license": "ISC",
+  "type": "commonjs",
   "dependencies": {
     "bcrypt": "^6.0.0",
     "cors": "^2.8.6",
@@ -27,8 +27,6 @@
     "uuid": "^13.0.0"
   },
   "devDependencies": {
-    "jest": "^30.3.0",
-    "nodemon": "^3.1.14",
-    "supertest": "^7.2.2"
+    "nodemon": "^3.1.14"
   }
 }

@@ -1,44 +1,22 @@
 const bcrypt = require('bcrypt');
-const crypto = require('crypto');
-const nodemailer = require('nodemailer');
 const jwt = require('jsonwebtoken');
 const pool = require('../config/db');
 
-const SALT_ROUNDS = 10;
-const BCRYPT_COST = 12; // De HU-AUTH-01/02
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret';
+const BCRYPT_COST = 12;
+const TERMS_VERSION = '1.0';
+const MAX_LOGIN_ATTEMPTS = 5;
+const BLOCK_DURATION_MINUTES = 15;
+const crypto = require('crypto');
+const nodemailer = require('nodemailer');
 
-// ============================================
-// Funciones Auxiliares
-// ============================================
-
-const getConfig = async (client, clave, valorDefault) => {
-    const res = await client.query('SELECT valor FROM Configuracion_Sistema WHERE clave = $1', [clave]);
-    if (res.rows.length > 0 && res.rows[0].valor) {
-        const parsed = parseInt(res.rows[0].valor, 10);
-        if (!isNaN(parsed)) return parsed;
-    }
-    return valorDefault;
-};
-
-const verificarBloqueo = (usuario) => {
-    if (usuario.bloqueado_hasta && new Date() < new Date(usuario.bloqueado_hasta)) {
-        const bloqueadoHasta = new Date(usuario.bloqueado_hasta);
-        const minutosRestantes = Math.ceil((bloqueadoHasta.getTime() - new Date().getTime()) / 60000);
-        throw {
-            status: 403,
-            message: `Cuenta bloqueada por múltiples intentos fallidos. Intente nuevamente en ${minutosRestantes} minutos.`
-        };
+const verificarBloqueo = (user) => {
+    if (user.estado_cuenta === 'bloqueado temporal' && user.bloqueado_hasta) {
+        const now = new Date();
+        if (now < new Date(user.bloqueado_hasta)) {
+            throw { status: 403, message: "Cuenta bloqueada temporalmente." };
+        }
     }
 };
-
-const limpiarIntentosFallidos = async (client, idUsuario) => {
-    await client.query(
-        'UPDATE Usuario SET intentos_fallidos = 0, bloqueado_hasta = NULL WHERE id_usuario = $1',
-        [idUsuario]
-    );
-};
-
 const enviarCorreoRecuperacion = async (destinatario, enlace) => {
     const transporter = nodemailer.createTransport({
         host: process.env.SMTP_HOST,
@@ -71,193 +49,329 @@ const enviarCorreoRecuperacion = async (destinatario, enlace) => {
 
     await transporter.sendMail(mailOptions);
 };
-
-// ============================================
-// HU-AUTH-01: Registro de Usuario
-// ============================================
-
-const registerUser = async (userData) => {
-    const { nombre, correo, password, telefono, direccion } = userData;
+/**
+ * - Atomicidad (BEGIN / COMMIT / ROLLBACK)
+ * - Hash password
+ */
+const registerUser = async ({ email, password, role, ip }) => {
     const client = await pool.connect();
 
     try {
         await client.query('BEGIN');
 
-        // Verificar si el usuario ya existe
-        const existingUser = await client.query('SELECT id_usuario FROM Usuario WHERE correo = $1', [correo.toLowerCase()]);
-        if (existingUser.rows.length > 0) {
-            throw { status: 400, message: 'El correo electrónico ya está registrado.' };
+        // 1. Obtener id_rol
+        const roleResult = await client.query(
+            'SELECT id_rol FROM Rol WHERE LOWER(nombre_rol) = $1',
+            [role.toLowerCase()]
+        );
+
+        if (roleResult.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return {
+                success: false,
+                status: 400,
+                message: `El rol '${role}' no es válido o no existe en la base de datos.`,
+            };
         }
 
+        const idRol = roleResult.rows[0].id_rol;
+
+        // 2. Hash bcrypt con costo 12
         const passwordHash = await bcrypt.hash(password, BCRYPT_COST);
-        const result = await client.query(
-            `INSERT INTO Usuario (nombre, correo, password_hash, telefono, direccion, id_rol, fecha_creacion) 
-             VALUES ($1, $2, $3, $4, $5, $6, NOW()) RETURNING id_usuario, nombre, correo`,
-            [nombre, correo.toLowerCase(), passwordHash, telefono, direccion, 2] // Rol 2: Usuario estándar
+
+        let user;
+
+        try {
+            // 3. Crear Usuario (Manejo Senior de unique constraint)
+            const result = await client.query(
+                `INSERT INTO Usuario 
+                 (correo, password_hash, id_rol, estado_cuenta, ip_registro, fecha_registro)
+                 VALUES ($1, $2, $3, $4, $5, NOW())
+                 RETURNING id_usuario, correo, estado_cuenta`,
+                [
+                    email.toLowerCase(),
+                    passwordHash,
+                    idRol,
+                    'perfil_incompleto',
+                    ip
+                ]
+            );
+            user = result.rows[0];
+        } catch (dbErr) {
+            // Capturar la violación de restricción "UNIQUE" de Postgres
+            if (dbErr.code === '23505') {
+                await client.query('ROLLBACK');
+                return {
+                    success: false,
+                    status: 409,
+                    message: 'Este correo ya tiene una cuenta registrada.',
+                    action: 'login_or_recover',
+                };
+            }
+            throw dbErr;
+        }
+
+        // 4. Registrar Términos y Condiciones aceptados
+        await client.query(
+            `INSERT INTO Termino_Aceptado (id_usuario, version_documento, ip_aceptacion, fecha_hora_aceptacion)
+             VALUES ($1, $2, $3, NOW())`,
+            [user.id_usuario, TERMS_VERSION, ip]
+        );
+
+        // 5. Log de auditoría
+        await client.query(
+            `INSERT INTO Log_Auditoria 
+             (id_autor, accion, entidad_afectada, id_registro_afectado, ip, fecha)
+             VALUES ($1, $2, $3, $4, $5, NOW())`,
+            [user.id_usuario, 'REGISTRO_USUARIO', 'Usuario', user.id_usuario, ip]
         );
 
         await client.query('COMMIT');
-        return { success: true, user: result.rows[0] };
+
+        return {
+            success: true,
+            status: 201,
+            data: {
+                id: user.id_usuario,
+                email: user.correo,
+                role: role.toLowerCase(),
+                status: user.estado_cuenta,
+            }
+        };
+
     } catch (err) {
         await client.query('ROLLBACK');
+        console.error('[auth.service] Error en registro:', err.message);
         throw err;
     } finally {
         client.release();
     }
 };
 
-// ============================================
-// HU-AUTH-02: Inicio de Sesión
-// ============================================
-
-const loginUser = async (correo, password) => {
+/**
+ * Iniciar sesión
+ * - Verifica email y contraseña.
+ * - Maneja el bloqueo tras múltiples intentos fallidos.
+ * - Genera JWT con ID y Rol del usuario con duración de 24 horas.
+ * - Registra la auditoría del login.
+ */
+const loginUser = async ({ email, password, ip }) => {
     const client = await pool.connect();
-    try {
-        const res = await client.query(
-            'SELECT id_usuario, nombre, correo, password_hash, bloqueado_hasta FROM Usuario WHERE correo = $1',
-            [correo.toLowerCase()]
-        );
 
-        if (res.rows.length === 0) {
-            throw { status: 401, message: 'Credenciales inválidas.' };
-        }
-
-        const usuario = res.rows[0];
-        verificarBloqueo(usuario);
-
-        const match = await bcrypt.compare(password, usuario.password_hash);
-        if (!match) {
-            // Lógica de conteo de intentos (simplicada para el ejemplo)
-            throw { status: 401, message: 'Credenciales inválidas.' };
-        }
-
-        await limpiarIntentosFallidos(client, usuario.id_usuario);
-
-        const token = jwt.sign(
-            { id: usuario.id_usuario, correo: usuario.correo },
-            JWT_SECRET,
-            { expiresIn: '24h' }
-        );
-
-        // Registrar Log Auditoría Login
-        await client.query(
-            'INSERT INTO log_auditoria (id_usuario, accion, descripcion, fecha) VALUES ($1, $2, $3, NOW())',
-            [usuario.id_usuario, 'LOGIN_EXITOSO', 'Inicio de sesión exitoso']
-        );
-
-        return { success: true, token, user: { id: usuario.id_usuario, nombre: usuario.nombre, correo: usuario.correo } };
-    } catch (err) {
-        throw err;
-    } finally {
-        client.release();
-    }
-};
-
-// ============================================
-// HU-AUTH-03: Recuperación de Contraseña
-// ============================================
-
-const forgotPassword = async (correo) => {
-    const client = await pool.connect();
     try {
         await client.query('BEGIN');
 
-        const resultUser = await client.query('SELECT id_usuario, correo, bloqueado_hasta, intentos_fallidos FROM Usuario WHERE correo = $1', [correo.toLowerCase()]);
-        if (resultUser.rows.length === 0) {
-            throw { status: 404, message: 'No se encontró un usuario con ese correo electrónico.' };
+        // Buscar usuario con su rol asociado
+        const userResult = await client.query(
+            `SELECT u.id_usuario, u.correo, u.password_hash, u.estado_cuenta, u.intentos_fallidos, u.bloqueado_hasta, r.nombre_rol 
+             FROM Usuario u 
+             JOIN Rol r ON u.id_rol = r.id_rol 
+             WHERE u.correo = $1`,
+            [email.toLowerCase()]
+        );
+
+        if (userResult.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return {
+                success: false,
+                status: 401,
+                message: 'Correo o contraseña incorrectos.',
+            };
         }
-        const usuario = resultUser.rows[0];
 
-        verificarBloqueo(usuario);
+        const user = userResult.rows[0];
 
-        const tokenPlano = crypto.randomUUID();
-        const tokenHash = await bcrypt.hash(tokenPlano, SALT_ROUNDS);
-        
-        const fechaExpiracion = new Date();
-        fechaExpiracion.setHours(fechaExpiracion.getHours() + 1);
+        // 1. Verificar si la cuenta está bloqueada temporalmente
+        if (user.estado_cuenta === 'bloqueado temporal' && user.bloqueado_hasta) {
+            const now = new Date();
+            const blockedUntil = new Date(user.bloqueado_hasta);
 
-        await client.query(
-            `INSERT INTO recuperacion_password (id_usuario, token_hash, fecha_expiracion, estado) 
-             VALUES ($1, $2, $3, 'pendiente')`,
-            [usuario.id_usuario, tokenHash, fechaExpiracion]
-        );
-
-        const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-        const enlaceRecuperacion = `${baseUrl}/reset-password?token=${tokenPlano}`;
-        await enviarCorreoRecuperacion(correo, enlaceRecuperacion);
-
-        await client.query('COMMIT');
-        return { message: 'Se ha enviado un enlace de recuperación a tu correo electrónico.' };
-    } catch (err) {
-        await client.query('ROLLBACK');
-        throw err;
-    } finally {
-        client.release();
-    }
-};
-
-const resetPassword = async (token, nuevaPassword) => {
-    const client = await pool.connect();
-    try {
-        await client.query('BEGIN');
-
-        const resultRecuperaciones = await client.query(
-            `SELECT rp.id_token, rp.id_usuario, rp.token_hash, rp.fecha_expiracion, 
-                    u.bloqueado_hasta, u.intentos_fallidos, u.correo
-             FROM recuperacion_password rp
-             JOIN Usuario u ON rp.id_usuario = u.id_usuario
-             WHERE rp.estado = 'pendiente'`
-        );
-
-        let registroValido = null;
-        for (const registro of resultRecuperaciones.rows) {
-            if (new Date() > new Date(registro.fecha_expiracion)) continue;
-            
-            const coincide = await bcrypt.compare(token, registro.token_hash);
-            if (coincide) {
-                registroValido = registro;
-                break;
+            if (now < blockedUntil) {
+                await client.query('ROLLBACK');
+                return {
+                    success: false,
+                    status: 403,
+                    message: "Demasiados intentos fallidos. Cuenta bloqueada temporalmente. Intenta de nuevo más tarde.",
+                };
+            } else {
+                // El tiempo de bloqueo ya expiró, liberamos la cuenta
+                await client.query(
+                    "UPDATE Usuario SET estado_cuenta = 'activo', intentos_fallidos = 0, bloqueado_hasta = NULL WHERE id_usuario = $1",
+                    [user.id_usuario]
+                );
+                user.estado_cuenta = 'activo';
+                user.intentos_fallidos = 0;
             }
         }
 
-        if (!registroValido) {
-            throw { status: 400, message: 'El token es inválido o ha expirado.' };
+        // 2. Comparar la contraseña
+        const passwordMatch = await bcrypt.compare(password, user.password_hash);
+
+        if (!passwordMatch) {
+            // Incrementar contadores de intentos fallidos
+            const newAttempts = (user.intentos_fallidos || 0) + 1;
+
+            if (newAttempts >= MAX_LOGIN_ATTEMPTS) {
+                // Bloquear cuenta
+                await client.query(
+                    "UPDATE Usuario SET intentos_fallidos = $1, estado_cuenta = 'bloqueado temporal', bloqueado_hasta = NOW() + interval '15 minutes' WHERE id_usuario = $2",
+                    [newAttempts, user.id_usuario]
+                );
+
+                // Auditoría de cuenta bloqueada
+                await client.query(
+                    "INSERT INTO Log_Auditoria (id_autor, accion, entidad_afectada, id_registro_afectado, ip, fecha) VALUES ($1, $2, $3, $4, $5, NOW())",
+                    [user.id_usuario, 'BLOQUEO_CUENTA', 'Usuario', user.id_usuario, ip]
+                );
+            } else {
+                // Solo actualizar el intento fallido
+                await client.query(
+                    "UPDATE Usuario SET intentos_fallidos = $1 WHERE id_usuario = $2",
+                    [newAttempts, user.id_usuario]
+                );
+            }
+
+            // Auditoría de login fallido
+            await client.query(
+                "INSERT INTO Log_Auditoria (id_autor, accion, entidad_afectada, id_registro_afectado, ip, fecha) VALUES ($1, $2, $3, $4, $5, NOW())",
+                [user.id_usuario, 'LOGIN_FALLIDO', 'Usuario', user.id_usuario, ip]
+            );
+
+            await client.query('COMMIT');
+
+            return {
+                success: false,
+                status: 401,
+                message: 'Correo o contraseña incorrectos.',
+            };
         }
 
-        verificarBloqueo(registroValido);
+        // 3. Login Exitoso (resetear intentos si había)
+        if (user.intentos_fallidos > 0 || user.estado_cuenta === 'bloqueado temporal') {
+            await client.query(
+                "UPDATE Usuario SET intentos_fallidos = 0, bloqueado_hasta = NULL, estado_cuenta = CASE WHEN estado_cuenta = 'bloqueado temporal' THEN 'activo' ELSE estado_cuenta END WHERE id_usuario = $1",
+                [user.id_usuario]
+            );
+        }
 
-        const nuevoHash = await bcrypt.hash(nuevaPassword, SALT_ROUNDS);
-
+        // Auditoría Login Exitoso
         await client.query(
-            'UPDATE Usuario SET password_hash = $1 WHERE id_usuario = $2',
-            [nuevoHash, registroValido.id_usuario]
-        );
-
-        await limpiarIntentosFallidos(client, registroValido.id_usuario);
-
-        await client.query(
-            `UPDATE recuperacion_password SET estado = 'usado' WHERE id_token = $1`,
-            [registroValido.id_token]
-        );
-
-        await client.query(
-            'INSERT INTO log_auditoria (id_usuario, accion, descripcion, fecha) VALUES ($1, $2, $3, NOW())',
-            [registroValido.id_usuario, 'RESTABLECER_PASSWORD', 'Cambio exitoso de contraseña mediante recuperación']
+            "INSERT INTO Log_Auditoria (id_autor, accion, entidad_afectada, id_registro_afectado, ip, fecha) VALUES ($1, $2, $3, $4, $5, NOW())",
+            [user.id_usuario, 'LOGIN_EXITOSO', 'Usuario', user.id_usuario, ip]
         );
 
         await client.query('COMMIT');
-        return { message: 'La contraseña se ha restablecido exitosamente.' };
+
+        // Generar JWT
+        const payload = {
+            id: user.id_usuario,
+            role: user.nombre_rol.toLowerCase(),
+        };
+
+        const token = jwt.sign(payload, process.env.JWT_SECRET || 'fallback_secret', {
+            expiresIn: process.env.JWT_EXPIRES_IN || '24h',
+        });
+
+        return {
+            success: true,
+            status: 200,
+            data: {
+                user: {
+                    id: user.id_usuario,
+                    email: user.correo,
+                    role: payload.role,
+                },
+                token
+            }
+        };
+
     } catch (err) {
         await client.query('ROLLBACK');
+        console.error('[auth.service] Error en login:', err.message);
         throw err;
     } finally {
         client.release();
     }
 };
+const forgotPassword = async ({ email, ip }) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const res = await client.query(
+            'SELECT id_usuario, estado_cuenta, bloqueado_hasta FROM Usuario WHERE correo = $1',
+            [email.toLowerCase()]
+        );
 
-module.exports = {
-    registerUser,
-    loginUser,
-    forgotPassword,
-    resetPassword
+        if (res.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return { message: 'Si el correo está registrado, recibirás un enlace pronto.' };
+        }
+
+        const user = res.rows[0];
+        verificarBloqueo(user);
+
+        const token = crypto.randomBytes(32).toString('hex');
+        const expires = new Date(Date.now() + 3600000); // 1 hora
+
+        await client.query(
+            `INSERT INTO Recuperacion_Password (id_usuario, token_hash, fecha_expiracion, estado) 
+             VALUES ($1, $2, $3, 'pendiente')`,
+            [user.id_usuario, token, expires]
+        );
+
+        // Auditoría
+        await client.query(
+            `INSERT INTO Log_Auditoria (id_autor, accion, entidad_afectada, id_registro_afectado, ip, fecha)
+             VALUES ($1, 'SOLICITUD_RECUPERACION', 'Usuario', $1, $2, NOW())`,
+            [user.id_usuario, ip]
+        );
+
+        const baseUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+        const enlace = `${baseUrl}/reset-password?token=${token}`;
+        await enviarCorreoRecuperacion(email, enlace);
+
+        await client.query('COMMIT');
+        return { message: 'Enlace de recuperación enviado con éxito.' };
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally { client.release(); }
 };
+
+const resetPassword = async ({ token, newPassword, ip }) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        // Búsqueda DIRECTA (Optimizado)
+        const recoveryRes = await client.query(
+            `SELECT id_usuario, id_token FROM Recuperacion_Password 
+             WHERE token_hash = $1 AND estado = 'pendiente' AND fecha_expiracion > NOW()`,
+            [token]
+        );
+
+        if (recoveryRes.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return { success: false, status: 400, message: 'Token inválido o expirado.' };
+        }
+
+        const { id_usuario, id_token } = recoveryRes.rows[0];
+        const passwordHash = await bcrypt.hash(newPassword, BCRYPT_COST);
+
+        await client.query('UPDATE Usuario SET password_hash = $1 WHERE id_usuario = $2', [passwordHash, id_usuario]);
+        await client.query(`UPDATE Recuperacion_Password SET estado = 'usado' WHERE id_token = $1`, [id_token]);
+
+        await client.query(
+            `INSERT INTO Log_Auditoria (id_autor, accion, entidad_afectada, id_registro_afectado, ip, fecha)
+             VALUES ($1, 'RESET_PASSWORD', 'Usuario', $1, $2, NOW())`,
+            [id_usuario, ip]
+        );
+
+        await client.query('COMMIT');
+        return { success: true, message: 'Contraseña actualizada.' };
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally { client.release(); }
+};
+module.exports = { registerUser, loginUser, forgotPassword, resetPassword };
