@@ -6,7 +6,49 @@ const BCRYPT_COST = 12;
 const TERMS_VERSION = '1.0';
 const MAX_LOGIN_ATTEMPTS = 5;
 const BLOCK_DURATION_MINUTES = 15;
+const crypto = require('crypto');
+const nodemailer = require('nodemailer');
 
+const verificarBloqueo = (user) => {
+    if (user.estado_cuenta === 'bloqueado temporal' && user.bloqueado_hasta) {
+        const now = new Date();
+        if (now < new Date(user.bloqueado_hasta)) {
+            throw { status: 403, message: "Cuenta bloqueada temporalmente." };
+        }
+    }
+};
+const enviarCorreoRecuperacion = async (destinatario, enlace) => {
+    const transporter = nodemailer.createTransport({
+        host: process.env.SMTP_HOST,
+        port: parseInt(process.env.SMTP_PORT || '587'),
+        secure: false,
+        auth: {
+            user: process.env.SMTP_USER,
+            pass: process.env.SMTP_PASS,
+        },
+    });
+
+    const mailOptions = {
+        from: `"Plataforma Adopción de Mascotas" <${process.env.SMTP_USER}>`,
+        to: destinatario,
+        subject: 'Recuperación de Contraseña',
+        html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #333;">Recuperación de Contraseña</h2>
+          <p>Hemos recibido una solicitud para restablecer tu contraseña.</p>
+          <p>Haz clic en el siguiente enlace para crear una nueva contraseña:</p>
+          <a href="${enlace}" 
+             style="display: inline-block; padding: 12px 24px; background-color: #4CAF50; 
+                    color: white; text-decoration: none; border-radius: 4px; margin: 16px 0;">
+            Restablecer Contraseña
+          </a>
+          <p style="color: #666; font-size: 14px;">Este enlace expirará en <strong>1 hora</strong>.</p>
+        </div>
+      `,
+    };
+
+    await transporter.sendMail(mailOptions);
+};
 /**
  * - Atomicidad (BEGIN / COMMIT / ROLLBACK)
  * - Hash password
@@ -168,7 +210,7 @@ const loginUser = async ({ email, password, ip }) => {
         if (!passwordMatch) {
             // Incrementar contadores de intentos fallidos
             const newAttempts = (user.intentos_fallidos || 0) + 1;
-            
+
             if (newAttempts >= MAX_LOGIN_ATTEMPTS) {
                 // Bloquear cuenta
                 await client.query(
@@ -251,5 +293,85 @@ const loginUser = async ({ email, password, ip }) => {
         client.release();
     }
 };
+const forgotPassword = async ({ email, ip }) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const res = await client.query(
+            'SELECT id_usuario, estado_cuenta, bloqueado_hasta FROM Usuario WHERE correo = $1',
+            [email.toLowerCase()]
+        );
 
-module.exports = { registerUser, loginUser };
+        if (res.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return { message: 'Si el correo está registrado, recibirás un enlace pronto.' };
+        }
+
+        const user = res.rows[0];
+        verificarBloqueo(user);
+
+        const token = crypto.randomBytes(32).toString('hex');
+        const expires = new Date(Date.now() + 3600000); // 1 hora
+
+        await client.query(
+            `INSERT INTO Recuperacion_Password (id_usuario, token_hash, fecha_expiracion, estado) 
+             VALUES ($1, $2, $3, 'pendiente')`,
+            [user.id_usuario, token, expires]
+        );
+
+        // Auditoría
+        await client.query(
+            `INSERT INTO Log_Auditoria (id_autor, accion, entidad_afectada, id_registro_afectado, ip, fecha)
+             VALUES ($1, 'SOLICITUD_RECUPERACION', 'Usuario', $1, $2, NOW())`,
+            [user.id_usuario, ip]
+        );
+
+        const baseUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+        const enlace = `${baseUrl}/reset-password?token=${token}`;
+        await enviarCorreoRecuperacion(email, enlace);
+
+        await client.query('COMMIT');
+        return { message: 'Enlace de recuperación enviado con éxito.' };
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally { client.release(); }
+};
+
+const resetPassword = async ({ token, newPassword, ip }) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        // Búsqueda DIRECTA (Optimizado)
+        const recoveryRes = await client.query(
+            `SELECT id_usuario, id_token FROM Recuperacion_Password 
+             WHERE token_hash = $1 AND estado = 'pendiente' AND fecha_expiracion > NOW()`,
+            [token]
+        );
+
+        if (recoveryRes.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return { success: false, status: 400, message: 'Token inválido o expirado.' };
+        }
+
+        const { id_usuario, id_token } = recoveryRes.rows[0];
+        const passwordHash = await bcrypt.hash(newPassword, BCRYPT_COST);
+
+        await client.query('UPDATE Usuario SET password_hash = $1 WHERE id_usuario = $2', [passwordHash, id_usuario]);
+        await client.query(`UPDATE Recuperacion_Password SET estado = 'usado' WHERE id_token = $1`, [id_token]);
+
+        await client.query(
+            `INSERT INTO Log_Auditoria (id_autor, accion, entidad_afectada, id_registro_afectado, ip, fecha)
+             VALUES ($1, 'RESET_PASSWORD', 'Usuario', $1, $2, NOW())`,
+            [id_usuario, ip]
+        );
+
+        await client.query('COMMIT');
+        return { success: true, message: 'Contraseña actualizada.' };
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally { client.release(); }
+};
+module.exports = { registerUser, loginUser, forgotPassword, resetPassword };

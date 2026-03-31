@@ -1,9 +1,18 @@
 const express = require('express');
-const { register, login } = require('../controllers/authController');
-const { validateRegister, validateLogin } = require('../middlewares/validate');
-
+const rateLimit = require('express-rate-limit');
+const { register, login, forgotPassword, resetPassword } = require('../controllers/authController');
+const {
+    validateRegister,
+    validateLogin,
+    validateForgotPassword,
+    validateResetPassword
+} = require('../middlewares/validate');
 const router = express.Router();
-
+const recoveryRateLimit = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 5,
+    message: { success: false, message: 'Demasiados intentos. Intenta en 15 min.' }
+});
 /**
  * @swagger
  * /api/auth/register:
@@ -87,4 +96,79 @@ router.post('/register', validateRegister, register);
  */
 router.post('/login', validateLogin, login);
 
+
+
+/**
+ * @swagger
+ * /api/auth/forgot-password:
+ *   post:
+ *     summary: Solicitar recuperación de contraseña
+ *     description: >
+ *       Envía un correo electrónico con un enlace de recuperación de contraseña
+ *       al usuario registrado con el correo proporcionado.
+ *       Límite: 5 solicitudes cada 15 minutos por IP.
+ *     tags:
+ *       - Autenticación
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - correo
+ *             properties:
+ *               correo:
+ *                 type: string
+ *                 format: email
+ *                 example: usuario@ejemplo.com
+ *                 description: Correo electrónico del usuario registrado
+ *     responses:
+ *       200:
+ *         description: Enlace de recuperación enviado exitosamente
+ *       429:
+ *         description: Demasiadas solicitudes (Rate Limit)
+ *       500:
+ *         description: Error interno del servidor
+ */
+router.post('/forgot-password', recoveryRateLimit, validateForgotPassword, forgotPassword);
+
+/**
+ * @swagger
+ * /api/auth/reset-password:
+ *   post:
+ *     summary: Restablecer contraseña
+ *     description: >
+ *       Restablecer la contraseña del usuario utilizando el token de recuperación
+ *       recibido por correo electrónico.
+ *     tags:
+ *       - Autenticación
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - token
+ *               - nuevaPassword
+ *             properties:
+ *               token:
+ *                 type: string
+ *                 format: uuid
+ *                 description: Token de recuperación recibido por correo
+ *               nuevaPassword:
+ *                 type: string
+ *                 format: password
+ *                 minLength: 8
+ *                 description: Nueva contraseña (mínimo 8 caracteres)
+ *     responses:
+ *       200:
+ *         description: Contraseña restablecida exitosamente
+ *       400:
+ *         description: Token inválido o expirado
+ *       500:
+ *         description: Error interno del servidor
+ */
+router.post('/reset-password', validateResetPassword, resetPassword);
 module.exports = router;
