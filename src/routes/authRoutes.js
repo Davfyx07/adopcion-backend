@@ -1,13 +1,13 @@
 const { Router } = require('express');
 const rateLimit = require('express-rate-limit');
-const { forgotPassword, resetPassword } = require('../controllers/auth');
+const { register, login, forgotPassword, resetPassword } = require('../controllers/authController');
+const validate = require('../middlewares/validate');
 
 const router = Router();
 
 // Configuración de Rate Limit para recuperación de contraseña
-// 5 solicitudes cada 15 minutos por IP
 const recoveryRateLimit = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutos
+    windowMs: 15 * 60 * 1000,
     max: 5, 
     message: {
         message: 'Demasiadas solicitudes de recuperación desde esta IP. Intente nuevamente en 15 minutos.'
@@ -15,6 +15,47 @@ const recoveryRateLimit = rateLimit({
     standardHeaders: true,
     legacyHeaders: false,
 });
+
+/**
+ * @swagger
+ * /api/auth/register:
+ *   post:
+ *     summary: Registrar un nuevo usuario
+ *     tags: [Autenticación]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [nombre, correo, password]
+ *             properties:
+ *               nombre: { type: string }
+ *               correo: { type: string, format: email }
+ *               password: { type: string, minLength: 8 }
+ *               telefono: { type: string }
+ *               direccion: { type: string }
+ */
+router.post('/register', validate, register);
+
+/**
+ * @swagger
+ * /api/auth/login:
+ *   post:
+ *     summary: Iniciar sesión
+ *     tags: [Autenticación]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [correo, password]
+ *             properties:
+ *               correo: { type: string, format: email }
+ *               password: { type: string }
+ */
+router.post('/login', login);
 
 /**
  * @swagger
@@ -44,46 +85,10 @@ const recoveryRateLimit = rateLimit({
  *     responses:
  *       200:
  *         description: Enlace de recuperación enviado exitosamente
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: Se ha enviado un enlace de recuperación a tu correo electrónico.
- *       403:
- *         description: Cuenta bloqueada por múltiples intentos fallidos
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: Cuenta bloqueada por múltiples intentos fallidos. Intente nuevamente en 15 minutos.
- *       404:
- *         description: Usuario no encontrado
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: No se encontró un usuario con ese correo electrónico.
  *       429:
  *         description: Demasiadas solicitudes (Rate Limit)
  *       500:
  *         description: Error interno del servidor
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: Error interno del servidor.
  */
 router.post('/recuperar-password', recoveryRateLimit, forgotPassword);
 
@@ -110,45 +115,19 @@ router.post('/recuperar-password', recoveryRateLimit, forgotPassword);
  *               token:
  *                 type: string
  *                 format: uuid
- *                 example: 550e8400-e29b-41d4-a716-446655440000
  *                 description: Token de recuperación recibido por correo
  *               nuevaPassword:
  *                 type: string
  *                 format: password
  *                 minLength: 8
- *                 example: NuevaContraseña123!
  *                 description: Nueva contraseña (mínimo 8 caracteres)
  *     responses:
  *       200:
  *         description: Contraseña restablecida exitosamente
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: La contraseña se ha restablecido exitosamente.
- *       403:
- *         description: Cuenta bloqueada por múltiples intentos fallidos
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: Cuenta bloqueada por múltiples intentos fallidos. Intente nuevamente en 15 minutos.
+ *       400:
+ *         description: Token inválido o expirado
  *       500:
  *         description: Error interno del servidor
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: Error interno del servidor.
  */
 router.post('/reset-password', resetPassword);
 

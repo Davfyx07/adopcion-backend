@@ -5,7 +5,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const swaggerUi = require('swagger-ui-express');
 const swaggerJsdoc = require('swagger-jsdoc');
-const authRoutes = require('./routes/auth');
+const authRoutes = require('./routes/authRoutes');
 require('./config/db'); // Prueba conexión al iniciar
 
 const app = express();
