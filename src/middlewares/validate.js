@@ -67,5 +67,33 @@ const validateLogin = (req, res, next) => {
 
     next();
 };
+const validateForgotPassword = (req, res, next) => {
+    const { email } = req.body;
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!email || !emailRegex.test(email)) {
+        return res.status(400).json({
+            success: false,
+            errors: [{ field: 'email', message: 'El correo no tiene un formato válido.' }]
+        });
+    }
+    next();
+};
 
-module.exports = { validateRegister, validateLogin };
+const validateResetPassword = (req, res, next) => {
+    const { token, newPassword } = req.body;
+    const errors = [];
+
+    if (!token) errors.push({ field: 'token', message: 'El token es obligatorio.' });
+
+    const passwordRegex = /^(?=.*[A-Z])(?=.*\d).{8,}$/;
+    if (!newPassword || !passwordRegex.test(newPassword)) {
+        errors.push({
+            field: 'newPassword',
+            message: 'La nueva contraseña debe tener mínimo 8 caracteres, 1 mayúscula y 1 número.',
+        });
+    }
+
+    if (errors.length > 0) return res.status(400).json({ success: false, errors });
+    next();
+};
+module.exports = { validateRegister, validateLogin, validateForgotPassword, validateResetPassword };

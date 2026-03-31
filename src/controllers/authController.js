@@ -1,4 +1,4 @@
-const { registerUser, loginUser } = require('../services/authService');
+const { registerUser, loginUser, forgotPassword, resetPassword } = require('../services/authService');
 
 /**
  * POST /api/auth/register
@@ -68,4 +68,56 @@ const login = async (req, res) => {
     }
 };
 
-module.exports = { register, login };
+const forgotPasswordController = async (req, res) => {
+    try {
+        const { email } = req.body;
+        const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown';
+
+        const result = await forgotPassword({ email, ip });
+
+        return res.status(200).json({
+            success: true,
+            message: result.message
+        });
+    } catch (err) {
+        console.error('[auth.controller] forgotPassword:', err.message);
+        return res.status(500).json({
+            success: false,
+            message: 'Error al procesar la solicitud de recuperación.'
+        });
+    }
+};
+
+const resetPasswordController = async (req, res) => {
+    try {
+        const { token, newPassword } = req.body;
+        const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown';
+
+        const result = await resetPassword({ token, newPassword, ip });
+
+        if (!result.success) {
+            return res.status(result.status || 400).json({
+                success: false,
+                message: result.message
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: result.message
+        });
+    } catch (err) {
+        console.error('[auth.controller] resetPassword:', err.message);
+        return res.status(500).json({
+            success: false,
+            message: 'Error al restablecer la contraseña.'
+        });
+    }
+};
+
+module.exports = {
+    register,
+    login,
+    forgotPassword: forgotPasswordController,
+    resetPassword: resetPasswordController
+};
