@@ -1,4 +1,4 @@
-const { registerUser } = require('../services/authService');
+const { registerUser, loginUser, forgotPassword, resetPassword, logoutUser } = require('../services/authService');
 
 /**
  * POST /api/auth/register
@@ -35,4 +35,119 @@ const register = async (req, res) => {
     }
 };
 
-module.exports = { register };
+/**
+ * POST /api/auth/login
+ * Maneja el inicio de sesión y la respuesta con JWT
+ */
+const login = async (req, res) => {
+    try {
+        const { email, password } = req.body;
+        const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown';
+
+        const result = await loginUser({ email, password, ip });
+
+        if (!result.success) {
+            return res.status(result.status).json({
+                success: false,
+                message: result.message,
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: 'Inicio de sesión exitoso.',
+            data: result.data,
+        });
+
+    } catch (err) {
+        console.error('[auth.controller] login:', err.message);
+        return res.status(500).json({
+            success: false,
+            message: 'Ocurrió un error al iniciar sesión. Intenta de nuevo más tarde.',
+        });
+    }
+};
+
+const forgotPasswordController = async (req, res) => {
+    try {
+        const { email } = req.body;
+        const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown';
+
+        const result = await forgotPassword({ email, ip });
+
+        return res.status(200).json({
+            success: true,
+            message: result.message
+        });
+    } catch (err) {
+        console.error('[auth.controller] forgotPassword:', err.message);
+        return res.status(500).json({
+            success: false,
+            message: 'Error al procesar la solicitud de recuperación.'
+        });
+    }
+};
+
+const resetPasswordController = async (req, res) => {
+    try {
+        const { token, newPassword } = req.body;
+        const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown';
+
+        const result = await resetPassword({ token, newPassword, ip });
+
+        if (!result.success) {
+            return res.status(result.status || 400).json({
+                success: false,
+                message: result.message
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: result.message
+        });
+    } catch (err) {
+        console.error('[auth.controller] resetPassword:', err.message);
+        return res.status(500).json({
+            success: false,
+            message: 'Error al restablecer la contraseña.'
+        });
+    }
+};
+
+const logout = async (req, res) => {
+    try {
+        const token = req.token;
+        const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown';
+
+        const result = await logoutUser({ token, ip });
+
+        if (!result.success) {
+            return res.status(result.status).json({
+                success: false,
+                message: result.message
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: result.message,
+            data: result.data || null
+        });
+
+    } catch (err) {
+        console.error('[auth.controller] logout:', err.message);
+        return res.status(500).json({
+            success: false,
+            message: 'Error al cerrar sesión.'
+        });
+    }
+};
+
+module.exports = {
+    register,
+    login,
+    forgotPassword: forgotPasswordController,
+    resetPassword: resetPasswordController,
+    logout
+};

@@ -45,4 +45,55 @@ const validateRegister = (req, res, next) => {
     next();
 };
 
-module.exports = { validateRegister };
+/**
+ * Middleware de validación para Login (HU-AUTH-02)
+ */
+const validateLogin = (req, res, next) => {
+    const { email, password } = req.body;
+    const errors = [];
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!email || !emailRegex.test(email)) {
+        errors.push({ field: 'email', message: 'El correo no tiene un formato válido.' });
+    }
+
+    if (!password || typeof password !== 'string') {
+        errors.push({ field: 'password', message: 'La contraseña es obligatoria.' });
+    }
+
+    if (errors.length > 0) {
+        return res.status(400).json({ success: false, errors });
+    }
+
+    next();
+};
+const validateForgotPassword = (req, res, next) => {
+    const { email } = req.body;
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!email || !emailRegex.test(email)) {
+        return res.status(400).json({
+            success: false,
+            errors: [{ field: 'email', message: 'El correo no tiene un formato válido.' }]
+        });
+    }
+    next();
+};
+
+const validateResetPassword = (req, res, next) => {
+    const { token, newPassword } = req.body;
+    const errors = [];
+
+    if (!token) errors.push({ field: 'token', message: 'El token es obligatorio.' });
+
+    const passwordRegex = /^(?=.*[A-Z])(?=.*\d).{8,}$/;
+    if (!newPassword || !passwordRegex.test(newPassword)) {
+        errors.push({
+            field: 'newPassword',
+            message: 'La nueva contraseña debe tener mínimo 8 caracteres, 1 mayúscula y 1 número.',
+        });
+    }
+
+    if (errors.length > 0) return res.status(400).json({ success: false, errors });
+    next();
+};
+module.exports = { validateRegister, validateLogin, validateForgotPassword, validateResetPassword };
