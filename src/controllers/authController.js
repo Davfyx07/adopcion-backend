@@ -1,4 +1,4 @@
-const { registerUser, loginUser, forgotPassword, resetPassword } = require('../services/authService');
+const { registerUser, loginUser, forgotPassword, resetPassword, logoutUser } = require('../services/authService');
 
 /**
  * POST /api/auth/register
@@ -115,9 +115,39 @@ const resetPasswordController = async (req, res) => {
     }
 };
 
+const logout = async (req, res) => {
+    try {
+        const token = req.token;
+        const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown';
+
+        const result = await logoutUser({ token, ip });
+
+        if (!result.success) {
+            return res.status(result.status).json({
+                success: false,
+                message: result.message
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: result.message,
+            data: result.data || null
+        });
+
+    } catch (err) {
+        console.error('[auth.controller] logout:', err.message);
+        return res.status(500).json({
+            success: false,
+            message: 'Error al cerrar sesión.'
+        });
+    }
+};
+
 module.exports = {
     register,
     login,
     forgotPassword: forgotPasswordController,
-    resetPassword: resetPasswordController
+    resetPassword: resetPasswordController,
+    logout
 };

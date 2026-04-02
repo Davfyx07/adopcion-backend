@@ -374,4 +374,72 @@ const resetPassword = async ({ token, newPassword, ip }) => {
         throw err;
     } finally { client.release(); }
 };
-module.exports = { registerUser, loginUser, forgotPassword, resetPassword };
+
+/**
+ * Logout de usuario
+ * - Invalida el token
+ * - Registra auditoría
+ */
+const logoutUser = async ({ token, ip }) => {
+    const client = await pool.connect();
+
+    try {
+        await client.query('BEGIN');
+
+        const decoded = jwt.decode(token);
+
+        if (!decoded || !decoded.id) {
+            await client.query('ROLLBACK');
+            return {
+                success: false,
+                status: 400,
+                message: 'Token inválido.'
+            };
+        }
+
+        // 🔐 Hash del token (CLAVE)
+        const tokenHash = crypto
+            .createHash('sha256')
+            .update(token)
+            .digest('hex');
+
+        // ⏳ Expiración basada en el JWT
+        const expirationDate = decoded.exp
+            ? new Date(decoded.exp * 1000)
+            : new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+        // Insertar en blacklist
+        await client.query(
+            `INSERT INTO Blacklist_Token (token_hash, fecha_expiracion)
+             VALUES ($1, $2)
+             ON CONFLICT (token_hash) DO NOTHING`,
+            [tokenHash, expirationDate]
+        );
+
+        // Auditoría
+        await client.query(
+            `INSERT INTO Log_Auditoria 
+             (id_autor, accion, entidad_afectada, id_registro_afectado, ip, fecha)
+             VALUES ($1, $2, $3, $4, $5, NOW())`,
+            [decoded.id, 'LOGOUT', 'Usuario', decoded.id, ip]
+        );
+
+        await client.query('COMMIT');
+
+        return {
+            success: true,
+            status: 200,
+            message: 'Logout exitoso.'
+        };
+
+    } catch (err) {
+        await client.query('ROLLBACK');
+        console.error('[auth.service] Error en logout:', err.message);
+        throw err;
+    } finally {
+        client.release();
+    }
+};
+
+module.exports = { registerUser, loginUser, forgotPassword, resetPassword, logoutUser };
+

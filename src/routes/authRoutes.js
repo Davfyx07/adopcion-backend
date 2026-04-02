@@ -1,12 +1,13 @@
 const express = require('express');
 const rateLimit = require('express-rate-limit');
-const { register, login, forgotPassword, resetPassword } = require('../controllers/authController');
+const { register, login, forgotPassword, resetPassword, logout } = require('../controllers/authController');
 const {
     validateRegister,
     validateLogin,
     validateForgotPassword,
     validateResetPassword
 } = require('../middlewares/validate');
+const authMiddleware = require('../middlewares/authMiddleware');
 const router = express.Router();
 const recoveryRateLimit = rateLimit({
     windowMs: 15 * 60 * 1000,
@@ -171,4 +172,21 @@ router.post('/forgot-password', recoveryRateLimit, validateForgotPassword, forgo
  *         description: Error interno del servidor
  */
 router.post('/reset-password', validateResetPassword, resetPassword);
+
+/**
+ * @swagger
+ * /api/auth/logout:
+ *   post:
+ *     summary: Cerrar sesión
+ *     description: Invalida el token JWT evitando su reutilización.
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Logout exitoso
+ *       401:
+ *         description: Token inválido
+ */
+router.post('/logout', authMiddleware, logout);
 module.exports = router;
