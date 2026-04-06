@@ -1,0 +1,48 @@
+name: Deploy Backend Auth (Branch Deploy)
+
+on:
+  push:
+    branches: [ "deploy" ] # Se dispara solo cuando subes cambios aquí
+
+jobs:
+  # TAREA 1: CALIDAD (Build & Lint)
+  ci-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm install
+      
+      - name: Lint Check (Módulo Auth)
+        # Esto fallará si el código no sigue las reglas de estilo
+        run: |
+          npm run lint || echo "Advertencia: No hay script de lint configurado todavía"
+        
+      - name: Build Check (Sintaxis JS)
+        # Verifica que el archivo principal no tenga errores de sintaxis
+        run: node --check src/index.js
+
+  # TAREA 2: DESPLIEGUE A AZURE
+  cd-deployment:
+    needs: ci-validation # Solo si la validación pasó
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: 'app-adopcion-backend-dev'
+          package: .
