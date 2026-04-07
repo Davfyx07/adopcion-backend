@@ -1,41 +1,34 @@
 name: Deploy Backend Auth (Branch Deploy)
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 on:
   push:
-    branches: [ "deploy" ] # Se dispara solo cuando subes cambios aquí
+    branches: [ "deploy" ]
 
 jobs:
-  # TAREA 1: CALIDAD (Build & Lint)
   ci-validation:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5 # Actualizado a v5
       
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5 # Actualizado a v5
         with:
-          node-version: '20'
+          node-version: '22' # Node 22 es el estándar estable en 2026
           cache: 'npm'
       
-      - name: Install dependencies
-        run: npm install
-      
-      - name: Lint Check (Módulo Auth)
-        # Esto fallará si el código no sigue las reglas de estilo
-        run: |
-          npm run lint || echo "Advertencia: No hay script de lint configurado todavía"
-        
-      - name: Build Check (Sintaxis JS)
-        # Verifica que el archivo principal no tenga errores de sintaxis
-        run: node --check src/index.js
+      - run: npm install
+      - run: npm run lint || echo "No lint found"
+      - run: node --check src/index.js
 
-  # TAREA 2: DESPLIEGUE A AZURE
   cd-deployment:
-    needs: ci-validation # Solo si la validación pasó
+    needs: ci-validation
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
+      - uses: actions/checkout@v5
+      
       - name: Login to Azure
         uses: azure/login@v2
         with:
