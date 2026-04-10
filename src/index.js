@@ -41,7 +41,12 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
 
 // Rutas
 const authRoutes = require('./routes/authRoutes');
+const adoptanteRoutes = require('./routes/adoptanteRoutes');
+const etiquetaRoutes = require('./routes/etiquetaRoutes');
+
 app.use('/api/auth', authRoutes);
+app.use('/api/adoptante', adoptanteRoutes);
+app.use('/api/etiquetas', etiquetaRoutes);
 
 app.get('/health', (_, res) => res.json({ success: true }));
 
