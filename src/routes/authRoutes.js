@@ -21,6 +21,7 @@ const recoveryRateLimit = rateLimit({
  *     summary: Registro de un nuevo usuario
  *     description: Permite que un usuario nuevo cree su cuenta seleccionando rol (adoptante o albergue), validando correo, contraseña y aceptación de términos.
  *     tags: [Auth]
+
  *     requestBody:
  *       required: true
  *       content:
@@ -108,8 +109,7 @@ router.post('/login', validateLogin, login);
  *       Envía un correo electrónico con un enlace de recuperación de contraseña
  *       al usuario registrado con el correo proporcionado.
  *       Límite: 5 solicitudes cada 15 minutos por IP.
- *     tags:
- *       - Autenticación
+ *     tags: [Auth]
  *     requestBody:
  *       required: true
  *       content:
@@ -117,9 +117,9 @@ router.post('/login', validateLogin, login);
  *           schema:
  *             type: object
  *             required:
- *               - correo
+ *               - email    
  *             properties:
- *               correo:
+ *               email:
  *                 type: string
  *                 format: email
  *                 example: usuario@ejemplo.com
@@ -142,8 +142,7 @@ router.post('/forgot-password', recoveryRateLimit, validateForgotPassword, forgo
  *     description: >
  *       Restablecer la contraseña del usuario utilizando el token de recuperación
  *       recibido por correo electrónico.
- *     tags:
- *       - Autenticación
+ *     tags: [Auth]
  *     requestBody:
  *       required: true
  *       content:
@@ -152,13 +151,13 @@ router.post('/forgot-password', recoveryRateLimit, validateForgotPassword, forgo
  *             type: object
  *             required:
  *               - token
- *               - nuevaPassword
+ *               - newPassword
  *             properties:
  *               token:
  *                 type: string
  *                 format: uuid
  *                 description: Token de recuperación recibido por correo
- *               nuevaPassword:
+ *               newPassword:
  *                 type: string
  *                 format: password
  *                 minLength: 8
