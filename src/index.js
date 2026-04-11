@@ -12,6 +12,10 @@ app.use(helmet());
 app.use(cors());
 app.use(express.json());
 
+// Servir archivos estáticos (logos locales)
+const path = require('path');
+app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
+
 // Swagger config
 const swaggerOptions = {
     definition: {
@@ -41,7 +45,10 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
 
 // Rutas
 const authRoutes = require('./routes/authRoutes');
+const albergueRoutes = require('./routes/albergueRoutes');
+
 app.use('/api/auth', authRoutes);
+app.use('/api/albergue', albergueRoutes);
 
 app.get('/health', (_, res) => res.json({ success: true }));
 
