@@ -1,6 +1,6 @@
 const express = require('express');
-const { crearPerfil } = require('../controllers/adoptanteController');
-const { validatePerfilAdoptante } = require('../middlewares/adoptanteValidation');
+const { crearPerfil, getPerfil, updatePerfil, updateEtiquetas } = require('../controllers/adoptanteController');
+const { validatePerfilAdoptante, validateUpdatePerfil, validateUpdateTags } = require('../middlewares/adoptanteValidation');
 const authMiddleware = require('../middlewares/authMiddleware');
 
 const router = express.Router();
@@ -104,5 +104,103 @@ const router = express.Router();
  *         description: Error interno del servidor
  */
 router.post('/perfil', authMiddleware, validatePerfilAdoptante, crearPerfil);
+
+/**
+ * @swagger
+ * /api/adoptante/perfil:
+ *   get:
+ *     summary: Obtener perfil de adoptante
+ *     description: Retorna los datos básicos y etiquetas del adoptante autenticado.
+ *     tags: [Adoptante]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Perfil obtenido exitosamente
+ *       404:
+ *         description: Perfil no encontrado
+ *       401:
+ *         description: Token inválido o no proporcionado
+ */
+router.get('/perfil', authMiddleware, getPerfil);
+
+/**
+ * @swagger
+ * /api/adoptante/perfil:
+ *   put:
+ *     summary: Actualizar datos básicos del perfil
+ *     description: Actualiza la información de contacto y foto del adoptante, excluyendo las etiquetas.
+ *     tags: [Adoptante]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - telefono
+ *               - ciudad
+ *               - direccion
+ *             properties:
+ *               telefono:
+ *                 type: string
+ *                 example: "3001234567"
+ *               ciudad:
+ *                 type: string
+ *                 example: "Medellín"
+ *               direccion:
+ *                 type: string
+ *                 example: "Carrera 45 # 12-34"
+ *               foto:
+ *                 type: string
+ *                 description: Foto en base64. Opcional.
+ *     responses:
+ *       200:
+ *         description: Perfil actualizado exitosamente
+ *       400:
+ *         description: Error de validación
+ *       404:
+ *         description: Perfil no encontrado
+ *       401:
+ *         description: No autorizado
+ */
+router.put('/perfil', authMiddleware, validateUpdatePerfil, updatePerfil);
+
+/**
+ * @swagger
+ * /api/adoptante/etiquetas:
+ *   put:
+ *     summary: Actualizar etiquetas (preferencias) del adoptante
+ *     description: Reemplaza las etiquetas del adoptante actual y recalcula su embedding.
+ *     tags: [Adoptante]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - tags
+ *             properties:
+ *               tags:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *                 example: [1, 2, 4, 5]
+ *     responses:
+ *       200:
+ *         description: Etiquetas actualizadas exitosamente
+ *       400:
+ *         description: Error de validación (ej. faltan obligatorias)
+ *       404:
+ *         description: Perfil no encontrado
+ *       401:
+ *         description: No autorizado
+ */
+router.put('/etiquetas', authMiddleware, validateUpdateTags, updateEtiquetas);
 
 module.exports = router;
