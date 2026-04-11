@@ -1,11 +1,15 @@
 const express = require('express');
+const router = express.Router();
+
 const authMiddleware = require('../middlewares/authMiddleware');
 const authorizeRole = require('../middlewares/authorizeRole');
-const { upload } = require('../config/uploadConfig');
-const { validateAlbergueProfile } = require('../middlewares/albergueValidate');
-const { createProfile } = require('../controllers/albergueController');
+const { validateCreatePerfil, validateUpdatePerfil } = require('../middlewares/albergueValidation');
 
-const router = express.Router();
+const {
+    createProfile,
+    getPerfil,
+    updatePerfil
+} = require('../controllers/albergueController');
 
 /**
  * @swagger
@@ -15,16 +19,14 @@ const router = express.Router();
  *     description: >
  *       Permite a un usuario con rol "albergue" y estado "perfil_incompleto"
  *       completar su perfil institucional. Al completar exitosamente,
- *       el estado de la cuenta cambia a "activo" y se habilita el panel de gestión.
- *       El logo debe enviarse como archivo en formato multipart/form-data.
- *     tags:
- *       - Albergue
+ *       el estado de la cuenta cambia a "activo".
+ *     tags: [Albergue]
  *     security:
  *       - bearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
- *         multipart/form-data:
+ *         application/json:
  *           schema:
  *             type: object
  *             required:
@@ -32,72 +34,31 @@ const router = express.Router();
  *               - nit
  *               - descripcion
  *               - whatsapp
- *               - logo
  *             properties:
  *               nombre_albergue:
  *                 type: string
- *                 minLength: 3
- *                 maxLength: 150
  *                 example: Fundación Patitas Felices
- *                 description: Nombre oficial del albergue
+ *                 description: Nombre oficial del albergue (3-150 caracteres)
  *               nit:
  *                 type: string
  *                 example: "900123456-7"
- *                 description: NIT del albergue (formato colombiano)
  *               descripcion:
  *                 type: string
- *                 minLength: 20
- *                 example: Somos una fundación dedicada al rescate y adopción responsable de animales en situación de calle en la ciudad de Neiva.
- *                 description: Descripción institucional del albergue
+ *                 example: Somos una fundación dedicada al rescate...
+ *                 description: Mínimo 20 caracteres
  *               whatsapp:
  *                 type: string
  *                 example: "+573001234567"
- *                 description: Número de WhatsApp institucional (canal principal de contacto con adoptantes)
  *               logo:
  *                 type: string
- *                 format: binary
- *                 description: Logo institucional (JPG o PNG, máximo 5MB)
+ *                 example: "data:image/jpeg;base64,/9j/4AAQ..."
+ *                 description: Logo en formato base64 (JPG o PNG, máx 5MB). Opcional.
  *               sitio_web:
  *                 type: string
- *                 format: uri
  *                 example: https://www.patitasfelices.org
- *                 description: Sitio web o red social del albergue (opcional)
  *     responses:
  *       201:
  *         description: Perfil institucional creado exitosamente. Cuenta activada.
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 message:
- *                   type: string
- *                   example: Perfil institucional creado exitosamente. Tu cuenta ha sido activada.
- *                 data:
- *                   type: object
- *                   properties:
- *                     id_usuario:
- *                       type: string
- *                       format: uuid
- *                     nombre_albergue:
- *                       type: string
- *                     nit:
- *                       type: string
- *                     descripcion:
- *                       type: string
- *                     whatsapp:
- *                       type: string
- *                     logo_url:
- *                       type: string
- *                     sitio_web:
- *                       type: string
- *                       nullable: true
- *                     estado_cuenta:
- *                       type: string
- *                       example: activo
  *       400:
  *         description: Error de validación en los campos enviados.
  *       401:
@@ -106,39 +67,64 @@ const router = express.Router();
  *         description: El usuario no tiene rol de albergue.
  *       409:
  *         description: NIT ya registrado o perfil ya creado.
- *       500:
- *         description: Error interno del servidor.
  */
-router.post(
-    '/perfil',
-    authMiddleware,
-    authorizeRole(['albergue']),
-    (req, res, next) => {
-        // Wrapper para capturar errores de multer (tamaño, formato)
-        upload.single('logo')(req, res, (err) => {
-            if (err) {
-                if (err.code === 'LIMIT_FILE_SIZE') {
-                    return res.status(400).json({
-                        success: false,
-                        errors: [{
-                            field: 'logo',
-                            message: 'El archivo excede el tamaño máximo permitido de 5MB.',
-                        }],
-                    });
-                }
-                return res.status(400).json({
-                    success: false,
-                    errors: [{
-                        field: 'logo',
-                        message: err.message || 'Error al procesar el archivo.',
-                    }],
-                });
-            }
-            next();
-        });
-    },
-    validateAlbergueProfile,
-    createProfile
-);
+router.post('/perfil', authMiddleware, authorizeRole(['albergue']), validateCreatePerfil, createProfile);
+
+/**
+ * @swagger
+ * /api/albergue/perfil:
+ *   get:
+ *     summary: Obtener perfil del albergue autenticado (HU-AL-02)
+ *     description: Retorna los datos institucionales del albergue logueado.
+ *     tags: [Albergue]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Perfil retornado exitosamente.
+ *       404:
+ *         description: Perfil no encontrado.
+ */
+router.get('/perfil', authMiddleware, authorizeRole(['albergue']), getPerfil);
+
+/**
+ * @swagger
+ * /api/albergue/perfil:
+ *   put:
+ *     summary: Editar perfil del albergue (HU-AL-02)
+ *     description: >
+ *       Actualiza la información del albergue. 
+ *       El NIT no es editable.
+ *       Si cambia el WhatsApp, se guarda en el historial.
+ *       Si se envía un logo nuevo, sobrescribe el anterior.
+ *     tags: [Albergue]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               descripcion:
+ *                 type: string
+ *                 example: Nueva descripción de la fundación...
+ *               whatsapp_actual:
+ *                 type: string
+ *                 example: "+573009999999"
+ *               sitio_web:
+ *                 type: string
+ *                 example: https://www.nuevo-sitio.org
+ *               logo:
+ *                 type: string
+ *                 description: Foto en base64 para reemplazar el logo actual. Opcional.
+ *     responses:
+ *       200:
+ *         description: Perfil actualizado exitosamente.
+ *       400:
+ *         description: Error de validación (ej. intento de modificar NIT).
+ */
+router.put('/perfil', authMiddleware, authorizeRole(['albergue']), validateUpdatePerfil, updatePerfil);
 
 module.exports = router;
