@@ -9,7 +9,7 @@ const router = express.Router();
 
 /**
  * @swagger
- * /api/albergue/profile:
+ * /api/albergue/perfil:
  *   post:
  *     summary: Crear perfil institucional del albergue (HU-AL-01)
  *     description: >
@@ -110,7 +110,7 @@ const router = express.Router();
  *         description: Error interno del servidor.
  */
 router.post(
-    '/profile',
+    '/perfil',
     authMiddleware,
     authorizeRole(['albergue']),
     (req, res, next) => {

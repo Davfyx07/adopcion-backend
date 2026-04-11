@@ -1,5 +1,5 @@
 const pool = require('../config/db');
-const { uploadLogo } = require('./uploadService');
+const { uploadImage } = require('./storageService');
 
 /**
  * HU-AL-01: Crear Perfil Institucional del Albergue
@@ -100,7 +100,7 @@ const createAlbergueProfile = async ({ userId, data, logoFile, ip }) => {
         // 4. Subir logo y obtener URL
         let logoUrl = null;
         if (logoFile) {
-            logoUrl = await uploadLogo(logoFile);
+            logoUrl = await uploadImage(logoFile.path, 'adopcion/logos');
         }
 
         // 5. INSERT en tabla Albergue (PK compartida con Usuario)
