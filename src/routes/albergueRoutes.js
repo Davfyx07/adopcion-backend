@@ -82,6 +82,21 @@ router.post('/perfil', authMiddleware, authorizeRole(['albergue']), validateCrea
  *     responses:
  *       200:
  *         description: Perfil retornado exitosamente.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               example:
+ *                 success: true
+ *                 data:
+ *                   id_usuario: "6f5cd3e1-7890-a1b2-c3d4-426614174000"
+ *                   nit: "900123456-7"
+ *                   nombre_albergue: "Fundación Patitas Felices"
+ *                   logo: "https://res.cloudinary.com/..."
+ *                   descripcion: "Somos una fundación dedicada al rescate animal en Neiva y brindamos cuidado integral a los perritos."
+ *                   whatsapp_actual: "3001234567"
+ *                   sitio_web: "https://patitasfelices.org"
+ *                   correo: "fundacion@gmail.com"
  *       404:
  *         description: Perfil no encontrado.
  */

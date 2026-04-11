@@ -40,7 +40,7 @@ const router = express.Router();
  *             properties:
  *               nombre_completo:
  *                 type: string
- *                 example: "Juan David Lozano"
+ *                 example: "Carlos Mendoza"
  *                 description: Nombre completo del adoptante (3-150 caracteres)
  *               whatsapp:
  *                 type: string
@@ -55,7 +55,7 @@ const router = express.Router();
  *                 items:
  *                   type: string
  *                   format: uuid
- *                 example: ["uuid-opcion-1", "uuid-opcion-2"]
+ *                 example: ["4f8b74cb-d3c4-4391-8e7a-0311078ca9a2", "c782f31c-1d2a-4332-9b09-49bf26af7e4c"]
  *                 description: UUIDs de opciones de tags seleccionadas del catálogo
  *               foto:
  *                 type: string
@@ -89,6 +89,22 @@ router.post('/perfil', authMiddleware, authorizeRole(['adoptante']), validatePer
  *     responses:
  *       200:
  *         description: Perfil obtenido exitosamente
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               example:
+ *                 success: true
+ *                 data:
+ *                   id_usuario: "123e4567-e89b-12d3-a456-426614174000"
+ *                   nombre_completo: "Carlos Mendoza"
+ *                   whatsapp: "3001234567"
+ *                   ciudad: "Bogotá"
+ *                   foto_url: "https://res.cloudinary.com/..."
+ *                   etiquetas:
+ *                     - id_opcion: "4f8b74cb-d3c4-4391-8e7a-0311078ca9a2"
+ *                       valor: "Gato"
+ *                       categoria: "Tipo de animal"
  *       404:
  *         description: Perfil no encontrado
  *       401:
@@ -120,7 +136,7 @@ router.get('/perfil', authMiddleware, authorizeRole(['adoptante']), getPerfil);
  *             properties:
  *               nombre_completo:
  *                 type: string
- *                 example: "Juan David Lozano Pérez"
+ *                 example: "Juan Pérez"
  *               whatsapp:
  *                 type: string
  *                 example: "3009876543"
