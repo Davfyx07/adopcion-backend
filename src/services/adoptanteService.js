@@ -1,19 +1,16 @@
 const pool = require('../config/db');
 const { uploadImage, validateBase64Image, deleteImage } = require('./storageService');
-const { calcularEmbedding } = require('./embeddingService');
-const { getEtiquetasObligatorias } = require('./etiquetaService');
+const { validarTagsObligatorios } = require('./etiquetaService');
 
 /**
- * Crea el perfil de un adoptante de forma atómica.
- * - Valida que no exista perfil previo
- * - Valida rol adoptante
- * - Valida tags obligatorios
- * - Sube foto a Cloudinary si se proporciona
- * - Calcula embedding vectorial
- * - Guarda perfil, tags y actualiza estado_cuenta
- * - Registra en log_auditoria
+ * HU-US-01: Crea el perfil de un adoptante de forma atómica.
+ * 
+ * Adaptado al esquema real de BD:
+ *   - Tabla: Adoptante (PK compartida con Usuario via id_usuario UUID)
+ *   - Columnas: nombre_completo, foto_perfil, whatsapp_adoptante, ciudad
+ *   - Tags: Adoptante_Tag (id_usuario, id_opcion) → referencia Opcion_Tag
  */
-const crearPerfilAdoptante = async ({ idUsuario, telefono, ciudad, direccion, tagIds, fotoBase64, ip }) => {
+const crearPerfilAdoptante = async ({ idUsuario, nombre_completo, whatsapp, ciudad, tagIds, fotoBase64, ip }) => {
     const client = await pool.connect();
 
     try {
@@ -21,10 +18,10 @@ const crearPerfilAdoptante = async ({ idUsuario, telefono, ciudad, direccion, ta
 
         // 1. Verificar rol adoptante
         const userResult = await client.query(
-            `SELECT u.id_usuario, r.nombre_rol
-             FROM usuario u
-             JOIN rol r ON u.id_rol = r.id_rol
-             WHERE u.id_usuario = $1`,
+            `SELECT u.id_usuario, u.estado_cuenta, r.nombre_rol
+             FROM Usuario u
+             JOIN Rol r ON u.id_rol = r.id_rol
+             WHERE u.id_usuario = $1 AND u.deleted_at IS NULL`,
             [idUsuario]
         );
 
@@ -33,7 +30,9 @@ const crearPerfilAdoptante = async ({ idUsuario, telefono, ciudad, direccion, ta
             return { success: false, status: 404, message: 'Usuario no encontrado.' };
         }
 
-        if (userResult.rows[0].nombre_rol !== 'adoptante') {
+        const user = userResult.rows[0];
+
+        if (user.nombre_rol.toLowerCase() !== 'adoptante') {
             await client.query('ROLLBACK');
             return {
                 success: false,
@@ -42,9 +41,14 @@ const crearPerfilAdoptante = async ({ idUsuario, telefono, ciudad, direccion, ta
             };
         }
 
-        // 2. Verificar que no tenga perfil creado
+        if (user.estado_cuenta !== 'perfil_incompleto') {
+            await client.query('ROLLBACK');
+            return { success: false, status: 409, message: 'Tu perfil ya fue completado anteriormente.' };
+        }
+
+        // 2. Verificar que no tenga perfil creado (doble check)
         const perfilExistente = await client.query(
-            'SELECT id_perfil FROM perfil_adoptante WHERE id_usuario = $1',
+            'SELECT id_usuario FROM Adoptante WHERE id_usuario = $1',
             [idUsuario]
         );
 
@@ -53,77 +57,68 @@ const crearPerfilAdoptante = async ({ idUsuario, telefono, ciudad, direccion, ta
             return { success: false, status: 409, message: 'Ya tienes un perfil de adoptante creado.' };
         }
 
-        // 3. Validar tags obligatorios
-        const obligatorias = await getEtiquetasObligatorias(client);
-        const tagSet = new Set(tagIds.map(Number));
-        const faltantes = obligatorias.filter(id => !tagSet.has(id));
+        // 3. Validar tags obligatorios (al menos 1 opción por cada Tag con es_filtro_absoluto)
+        if (tagIds && tagIds.length > 0) {
+            const validacion = await validarTagsObligatorios(tagIds, client);
+            if (!validacion.valid) {
+                await client.query('ROLLBACK');
+                return {
+                    success: false,
+                    status: 400,
+                    message: 'Debes seleccionar al menos una opción de cada categoría obligatoria.',
+                    data: { tags_faltantes: validacion.tagsFaltantes },
+                };
+            }
 
-        if (faltantes.length > 0) {
-            await client.query('ROLLBACK');
-            return {
-                success: false,
-                status: 400,
-                message: 'Debes seleccionar todas las etiquetas obligatorias.',
-                data: { tags_faltantes: faltantes },
-            };
-        }
-
-        // 4. Validar que los tag IDs existen en el catálogo
-        if (tagIds.length > 0) {
+            // 4. Validar que los IDs de opciones existen en Opcion_Tag
             const validTagsResult = await client.query(
-                'SELECT COUNT(*) AS total FROM etiqueta WHERE id_etiqueta = ANY($1)',
+                'SELECT COUNT(*) AS total FROM Opcion_Tag WHERE id_opcion = ANY($1)',
                 [tagIds]
             );
             if (parseInt(validTagsResult.rows[0].total) !== tagIds.length) {
                 await client.query('ROLLBACK');
-                return { success: false, status: 400, message: 'Uno o más tags seleccionados no existen.' };
+                return { success: false, status: 400, message: 'Una o más opciones seleccionadas no existen.' };
             }
         }
 
         // 5. Validar y subir foto si se proporciona
         let fotoUrl = null;
         if (fotoBase64) {
-            const validacion = validateBase64Image(fotoBase64);
-            if (!validacion.valid) {
+            const validacionFoto = validateBase64Image(fotoBase64);
+            if (!validacionFoto.valid) {
                 await client.query('ROLLBACK');
-                return { success: false, status: 400, message: validacion.message };
+                return { success: false, status: 400, message: validacionFoto.message };
             }
-            fotoUrl = await uploadImage(fotoBase64, 'adoptantes');
+            fotoUrl = await uploadImage(fotoBase64, 'adopcion/adoptantes');
         }
 
-        // 6. Calcular embedding vectorial basado en tags seleccionados
-        const embedding = await calcularEmbedding(tagIds);
-
-        // 7. Crear perfil_adoptante
-        const perfilResult = await client.query(
-            `INSERT INTO perfil_adoptante (id_usuario, telefono, ciudad, direccion, foto_url, embedding, fecha_creacion)
-             VALUES ($1, $2, $3, $4, $5, $6, NOW())
-             RETURNING id_perfil`,
-            [idUsuario, telefono.trim(), ciudad.trim(), direccion.trim(), fotoUrl, embedding]
+        // 6. Crear registro en tabla Adoptante (PK compartida con Usuario)
+        await client.query(
+            `INSERT INTO Adoptante (id_usuario, nombre_completo, foto_perfil, whatsapp_adoptante, ciudad)
+             VALUES ($1, $2, $3, $4, $5)`,
+            [idUsuario, nombre_completo.trim(), fotoUrl, whatsapp.trim(), ciudad.trim()]
         );
 
-        const idPerfil = perfilResult.rows[0].id_perfil;
-
-        // 8. Guardar tags en adoptante_tag
-        if (tagIds.length > 0) {
+        // 7. Guardar tags en Adoptante_Tag
+        if (tagIds && tagIds.length > 0) {
             const placeholders = tagIds.map((_, i) => `($1, $${i + 2})`).join(', ');
             await client.query(
-                `INSERT INTO adoptante_tag (id_usuario, id_etiqueta) VALUES ${placeholders}`,
+                `INSERT INTO Adoptante_Tag (id_usuario, id_opcion) VALUES ${placeholders}`,
                 [idUsuario, ...tagIds]
             );
         }
 
-        // 9. Actualizar estado_cuenta a 'completo'
+        // 8. Actualizar estado_cuenta a 'activo'
         await client.query(
-            "UPDATE usuario SET estado_cuenta = 'completo' WHERE id_usuario = $1",
+            "UPDATE Usuario SET estado_cuenta = 'activo' WHERE id_usuario = $1",
             [idUsuario]
         );
 
-        // 10. Log de auditoría
+        // 9. Log de auditoría
         await client.query(
-            `INSERT INTO log_auditoria (id_autor, accion, entidad_afectada, id_registro_afectado, ip, fecha)
-             VALUES ($1, 'CREACION_PERFIL_ADOPTANTE', 'perfil_adoptante', $2, $3, NOW())`,
-            [idUsuario, idPerfil, ip]
+            `INSERT INTO Log_Auditoria (id_autor, accion, entidad_afectada, id_registro_afectado, ip, fecha)
+             VALUES ($1, 'CREACION_PERFIL_ADOPTANTE', 'Adoptante', $1, $2, NOW())`,
+            [idUsuario, ip]
         );
 
         await client.query('COMMIT');
@@ -131,12 +126,13 @@ const crearPerfilAdoptante = async ({ idUsuario, telefono, ciudad, direccion, ta
         return {
             success: true,
             data: {
-                id_perfil: idPerfil,
-                telefono: telefono.trim(),
+                id_usuario: idUsuario,
+                nombre_completo: nombre_completo.trim(),
+                whatsapp: whatsapp.trim(),
                 ciudad: ciudad.trim(),
-                direccion: direccion.trim(),
                 foto_url: fotoUrl,
-                tags: tagIds,
+                tags: tagIds || [],
+                estado_cuenta: 'activo',
             },
         };
 
@@ -150,13 +146,13 @@ const crearPerfilAdoptante = async ({ idUsuario, telefono, ciudad, direccion, ta
 };
 
 /**
- * Obtiene el perfil de un adoptante incluyendo sus etiquetas.
+ * HU-US-02: Obtiene el perfil de un adoptante incluyendo sus etiquetas.
  */
 const obtenerPerfilAdoptante = async (idUsuario) => {
     const client = await pool.connect();
     try {
         const perfilResult = await client.query(
-            'SELECT * FROM perfil_adoptante WHERE id_usuario = $1',
+            'SELECT * FROM Adoptante WHERE id_usuario = $1',
             [idUsuario]
         );
 
@@ -167,23 +163,23 @@ const obtenerPerfilAdoptante = async (idUsuario) => {
         const perfil = perfilResult.rows[0];
 
         const tagsResult = await client.query(
-            `SELECT e.id_etiqueta, e.nombre, e.categoria 
-             FROM adoptante_tag at
-             JOIN etiqueta e ON at.id_etiqueta = e.id_etiqueta
-             WHERE at.id_usuario = $1`,
+            `SELECT ot.id_opcion, ot.valor, t.nombre_tag AS categoria
+             FROM Adoptante_Tag at_table
+             JOIN Opcion_Tag ot ON at_table.id_opcion = ot.id_opcion
+             JOIN Tag t ON ot.id_tag = t.id_tag
+             WHERE at_table.id_usuario = $1`,
             [idUsuario]
         );
 
         return {
             success: true,
             data: {
-                id_perfil: perfil.id_perfil,
-                telefono: perfil.telefono,
+                id_usuario: perfil.id_usuario,
+                nombre_completo: perfil.nombre_completo,
+                whatsapp: perfil.whatsapp_adoptante,
                 ciudad: perfil.ciudad,
-                direccion: perfil.direccion,
-                foto_url: perfil.foto_url,
-                fecha_creacion: perfil.fecha_creacion,
-                etiquetas: tagsResult.rows
+                foto_url: perfil.foto_perfil,
+                etiquetas: tagsResult.rows,
             }
         };
     } catch (err) {
@@ -195,15 +191,15 @@ const obtenerPerfilAdoptante = async (idUsuario) => {
 };
 
 /**
- * Actualiza los datos básicos del perfil (teléfono, ciudad, dirección, foto).
+ * HU-US-02: Actualiza los datos básicos del perfil (nombre, whatsapp, ciudad, foto).
  */
-const actualizarPerfilAdoptante = async ({ idUsuario, telefono, ciudad, direccion, fotoBase64, ip }) => {
+const actualizarPerfilAdoptante = async ({ idUsuario, nombre_completo, whatsapp, ciudad, fotoBase64, ip }) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
 
         const perfilAnteriorResult = await client.query(
-            'SELECT * FROM perfil_adoptante WHERE id_usuario = $1 FOR UPDATE',
+            'SELECT * FROM Adoptante WHERE id_usuario = $1 FOR UPDATE',
             [idUsuario]
         );
 
@@ -213,7 +209,7 @@ const actualizarPerfilAdoptante = async ({ idUsuario, telefono, ciudad, direccio
         }
 
         const perfilAnterior = perfilAnteriorResult.rows[0];
-        let nuevaFotoUrl = perfilAnterior.foto_url;
+        let nuevaFotoUrl = perfilAnterior.foto_perfil;
         let fotoViejaParaBorrar = null;
 
         if (fotoBase64) {
@@ -222,45 +218,44 @@ const actualizarPerfilAdoptante = async ({ idUsuario, telefono, ciudad, direccio
                 await client.query('ROLLBACK');
                 return { success: false, status: 400, message: validacion.message };
             }
-            nuevaFotoUrl = await uploadImage(fotoBase64, 'adoptantes');
-            fotoViejaParaBorrar = perfilAnterior.foto_url;
+            nuevaFotoUrl = await uploadImage(fotoBase64, 'adopcion/adoptantes');
+            fotoViejaParaBorrar = perfilAnterior.foto_perfil;
         }
 
         const result = await client.query(
-            `UPDATE perfil_adoptante 
-             SET telefono = $1, ciudad = $2, direccion = $3, foto_url = $4
+            `UPDATE Adoptante 
+             SET nombre_completo = $1, whatsapp_adoptante = $2, ciudad = $3, foto_perfil = $4
              WHERE id_usuario = $5 RETURNING *`,
-            [telefono.trim(), ciudad.trim(), direccion.trim(), nuevaFotoUrl, idUsuario]
+            [nombre_completo.trim(), whatsapp.trim(), ciudad.trim(), nuevaFotoUrl, idUsuario]
         );
 
         const perfilActualizado = result.rows[0];
 
-        // Auditoría
+        // Auditoría con valor anterior y nuevo
         await client.query(
-            `INSERT INTO log_auditoria (id_autor, accion, entidad_afectada, id_registro_afectado, valor_anterior, valor_nuevo, ip, fecha)
-             VALUES ($1, 'ACTUALIZACION_PERFIL_ADOPTANTE', 'perfil_adoptante', $2, $3, $4, $5, NOW())`,
+            `INSERT INTO Log_Auditoria (id_autor, accion, entidad_afectada, id_registro_afectado, valor_anterior, valor_nuevo, ip, fecha)
+             VALUES ($1, 'ACTUALIZACION_PERFIL_ADOPTANTE', 'Adoptante', $1, $2, $3, $4, NOW())`,
             [
-                idUsuario, 
-                perfilActualizado.id_perfil, 
-                JSON.stringify(perfilAnterior), 
-                JSON.stringify(perfilActualizado), 
+                idUsuario,
+                JSON.stringify(perfilAnterior),
+                JSON.stringify(perfilActualizado),
                 ip
             ]
         );
 
         await client.query('COMMIT');
 
-        // Borrar imagen vieja asincrónamente si existía una nueva
+        // Borrar imagen vieja asincrónamente si se cambió
         if (fotoViejaParaBorrar && fotoViejaParaBorrar !== nuevaFotoUrl) {
-            deleteImage(fotoViejaParaBorrar, 'adoptantes').catch(e => console.error('Error deleting old image', e));
+            deleteImage(fotoViejaParaBorrar, 'adopcion/adoptantes').catch(e => console.error('Error deleting old image', e));
         }
 
         return { success: true, data: {
-            id_perfil: perfilActualizado.id_perfil,
-            telefono: perfilActualizado.telefono,
+            id_usuario: perfilActualizado.id_usuario,
+            nombre_completo: perfilActualizado.nombre_completo,
+            whatsapp: perfilActualizado.whatsapp_adoptante,
             ciudad: perfilActualizado.ciudad,
-            direccion: perfilActualizado.direccion,
-            foto_url: perfilActualizado.foto_url
+            foto_url: perfilActualizado.foto_perfil,
         }};
     } catch (err) {
         await client.query('ROLLBACK');
@@ -272,7 +267,7 @@ const actualizarPerfilAdoptante = async ({ idUsuario, telefono, ciudad, direccio
 };
 
 /**
- * Actualiza únicamente las etiquetas y recalcula el embedding.
+ * HU-US-02: Actualiza únicamente las etiquetas (opciones de tags).
  */
 const actualizarEtiquetasAdoptante = async ({ idUsuario, tagIds, ip }) => {
     const client = await pool.connect();
@@ -280,7 +275,7 @@ const actualizarEtiquetasAdoptante = async ({ idUsuario, tagIds, ip }) => {
         await client.query('BEGIN');
 
         const perfilResult = await client.query(
-            'SELECT id_perfil FROM perfil_adoptante WHERE id_usuario = $1 FOR UPDATE',
+            'SELECT id_usuario FROM Adoptante WHERE id_usuario = $1 FOR UPDATE',
             [idUsuario]
         );
 
@@ -288,67 +283,57 @@ const actualizarEtiquetasAdoptante = async ({ idUsuario, tagIds, ip }) => {
             await client.query('ROLLBACK');
             return { success: false, status: 404, message: 'Perfil no encontrado.' };
         }
-        const idPerfil = perfilResult.rows[0].id_perfil;
 
         // Validar tags obligatorios
-        const obligatorias = await getEtiquetasObligatorias(client);
-        const tagSet = new Set(tagIds.map(Number));
-        const faltantes = obligatorias.filter(id => !tagSet.has(id));
-
-        if (faltantes.length > 0) {
+        const validacion = await validarTagsObligatorios(tagIds, client);
+        if (!validacion.valid) {
             await client.query('ROLLBACK');
             return {
                 success: false,
                 status: 400,
-                message: 'Debes seleccionar todas las etiquetas obligatorias.',
-                data: { tags_faltantes: faltantes },
+                message: 'Debes seleccionar al menos una opción de cada categoría obligatoria.',
+                data: { tags_faltantes: validacion.tagsFaltantes },
             };
         }
 
         // Validar que existen en el catálogo
         if (tagIds.length > 0) {
             const validTagsResult = await client.query(
-                'SELECT COUNT(*) AS total FROM etiqueta WHERE id_etiqueta = ANY($1)',
+                'SELECT COUNT(*) AS total FROM Opcion_Tag WHERE id_opcion = ANY($1)',
                 [tagIds]
             );
             if (parseInt(validTagsResult.rows[0].total) !== tagIds.length) {
                 await client.query('ROLLBACK');
-                return { success: false, status: 400, message: 'Uno o más tags seleccionados no existen.' };
+                return { success: false, status: 400, message: 'Una o más opciones seleccionadas no existen.' };
             }
         }
 
+        // Guardar tags anteriores para auditoría
         const tagsViejos = await client.query(
-            'SELECT id_etiqueta FROM adoptante_tag WHERE id_usuario = $1',
+            'SELECT id_opcion FROM Adoptante_Tag WHERE id_usuario = $1',
             [idUsuario]
         );
-        const viejosIds = tagsViejos.rows.map(r => r.id_etiqueta);
+        const viejosIds = tagsViejos.rows.map(r => r.id_opcion);
 
-        await client.query('DELETE FROM adoptante_tag WHERE id_usuario = $1', [idUsuario]);
+        // Borrar tags existentes y re-insertar
+        await client.query('DELETE FROM Adoptante_Tag WHERE id_usuario = $1', [idUsuario]);
 
         if (tagIds.length > 0) {
             const placeholders = tagIds.map((_, i) => `($1, $${i + 2})`).join(', ');
             await client.query(
-                `INSERT INTO adoptante_tag (id_usuario, id_etiqueta) VALUES ${placeholders}`,
+                `INSERT INTO Adoptante_Tag (id_usuario, id_opcion) VALUES ${placeholders}`,
                 [idUsuario, ...tagIds]
             );
         }
 
-        // Recalcular embedding
-        const newEmbedding = await calcularEmbedding(tagIds);
-        await client.query(
-            'UPDATE perfil_adoptante SET embedding = $1 WHERE id_usuario = $2',
-            [newEmbedding, idUsuario]
-        );
-
         // Auditoría
         await client.query(
-            `INSERT INTO log_auditoria (id_autor, accion, entidad_afectada, id_registro_afectado, valor_anterior, valor_nuevo, ip, fecha)
-             VALUES ($1, 'ACTUALIZACION_ETIQUETAS_ADOPTANTE', 'adoptante_tag', $2, $3, $4, $5, NOW())`,
+            `INSERT INTO Log_Auditoria (id_autor, accion, entidad_afectada, id_registro_afectado, valor_anterior, valor_nuevo, ip, fecha)
+             VALUES ($1, 'ACTUALIZACION_ETIQUETAS_ADOPTANTE', 'Adoptante_Tag', $1, $2, $3, $4, NOW())`,
             [
-                idUsuario, 
-                idPerfil, 
-                JSON.stringify({ tags: viejosIds }), 
-                JSON.stringify({ tags: tagIds }), 
+                idUsuario,
+                JSON.stringify({ tags: viejosIds }),
+                JSON.stringify({ tags: tagIds }),
                 ip
             ]
         );

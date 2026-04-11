@@ -6,23 +6,21 @@ const { crearPerfilAdoptante, obtenerPerfilAdoptante, actualizarPerfilAdoptante,
  */
 const crearPerfil = async (req, res) => {
     try {
-        const { telefono, ciudad, direccion, tags, foto } = req.body;
+        const { nombre_completo, whatsapp, ciudad, tags, foto } = req.body;
         const idUsuario = req.user.id;
         const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown';
 
         // tags puede llegar como array o como JSON string desde el cliente
-        let tagIds;
-        if (Array.isArray(tags)) {
-            tagIds = tags.map(Number);
-        } else {
-            tagIds = JSON.parse(tags || '[]').map(Number);
+        let tagIds = [];
+        if (tags) {
+            tagIds = Array.isArray(tags) ? tags : JSON.parse(tags);
         }
 
         const result = await crearPerfilAdoptante({
             idUsuario,
-            telefono,
+            nombre_completo,
+            whatsapp,
             ciudad,
-            direccion,
             tagIds,
             fotoBase64: foto || null,
             ip,
@@ -38,7 +36,7 @@ const crearPerfil = async (req, res) => {
 
         return res.status(201).json({
             success: true,
-            message: 'Perfil de adoptante creado exitosamente.',
+            message: 'Perfil de adoptante creado exitosamente. Tu cuenta ha sido activada.',
             data: result.data,
         });
 
@@ -87,15 +85,15 @@ const getPerfil = async (req, res) => {
  */
 const updatePerfil = async (req, res) => {
     try {
-        const { telefono, ciudad, direccion, foto } = req.body;
+        const { nombre_completo, whatsapp, ciudad, foto } = req.body;
         const idUsuario = req.user.id;
         const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown';
 
         const result = await actualizarPerfilAdoptante({
             idUsuario,
-            telefono,
+            nombre_completo,
+            whatsapp,
             ciudad,
-            direccion,
             fotoBase64: foto || null,
             ip,
         });
@@ -125,7 +123,7 @@ const updatePerfil = async (req, res) => {
 
 /**
  * PUT /api/adoptante/etiquetas
- * Actualiza las etiquetas y recalcula el embedding del adoptante.
+ * Actualiza las etiquetas del adoptante.
  */
 const updateEtiquetas = async (req, res) => {
     try {
@@ -133,11 +131,9 @@ const updateEtiquetas = async (req, res) => {
         const idUsuario = req.user.id;
         const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown';
 
-        let tagIds;
-        if (Array.isArray(tags)) {
-            tagIds = tags.map(Number);
-        } else {
-            tagIds = JSON.parse(tags || '[]').map(Number);
+        let tagIds = [];
+        if (tags) {
+            tagIds = Array.isArray(tags) ? tags : JSON.parse(tags);
         }
 
         const result = await actualizarEtiquetasAdoptante({

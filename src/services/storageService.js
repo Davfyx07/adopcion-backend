@@ -1,4 +1,5 @@
 const cloudinary = require('cloudinary').v2;
+const fs = require('fs');
 
 cloudinary.config({
     cloud_name: process.env.CLOUD_NAME,
@@ -30,14 +31,33 @@ const validateBase64Image = (base64) => {
 };
 
 /**
- * Sube una imagen base64 a Cloudinary.
- * @param {string} base64 - Data URI de la imagen
+ * Sube una imagen a Cloudinary.
+ * Acepta AMBOS formatos:
+ *   - Data URI base64 (adoptante): "data:image/jpeg;base64,/9j/4AAQ..."
+ *   - Ruta de archivo local (albergue vía multer): "/uploads/logos/logo_uuid_123.jpg"
+ * Cloudinary detecta automáticamente el formato.
+ *
+ * @param {string} source - Data URI base64 O ruta de archivo local
  * @param {string} folder - Carpeta destino en Cloudinary
  * @returns {Promise<string>} URL segura de la imagen subida
  */
-const uploadImage = async (base64, folder = 'adopcion') => {
-    const result = await cloudinary.uploader.upload(base64, { folder });
-    return result.secure_url;
+const uploadImage = async (source, folder = 'adopcion') => {
+    try {
+        const result = await cloudinary.uploader.upload(source, {
+            folder,
+            transformation: [{ width: 800, height: 800, crop: 'limit' }],
+        });
+
+        // Si el source es un archivo local (multer), borrarlo del disco
+        if (!source.startsWith('data:') && fs.existsSync(source)) {
+            fs.unlinkSync(source);
+        }
+
+        return result.secure_url;
+    } catch (err) {
+        console.error('[storage] Error subiendo imagen a Cloudinary:', err.message);
+        throw new Error('Error al subir la imagen al servidor en la nube.');
+    }
 };
 
 /**

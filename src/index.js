@@ -10,7 +10,11 @@ const PORT = process.env.PORT || 3000;
 
 app.use(helmet());
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+
+// Servir archivos estáticos (logos locales)
+const path = require('path');
+app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
 // Swagger config
 const swaggerOptions = {
@@ -44,9 +48,12 @@ const authRoutes = require('./routes/authRoutes');
 const adoptanteRoutes = require('./routes/adoptanteRoutes');
 const etiquetaRoutes = require('./routes/etiquetaRoutes');
 
+const albergueRoutes = require('./routes/albergueRoutes');
+
 app.use('/api/auth', authRoutes);
 app.use('/api/adoptante', adoptanteRoutes);
 app.use('/api/etiquetas', etiquetaRoutes);
+app.use('/api/albergue', albergueRoutes);
 
 app.get('/health', (_, res) => res.json({ success: true }));
 

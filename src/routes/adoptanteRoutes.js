@@ -2,6 +2,7 @@ const express = require('express');
 const { crearPerfil, getPerfil, updatePerfil, updateEtiquetas } = require('../controllers/adoptanteController');
 const { validatePerfilAdoptante, validateUpdatePerfil, validateUpdateTags } = require('../middlewares/adoptanteValidation');
 const authMiddleware = require('../middlewares/authMiddleware');
+const authorizeRole = require('../middlewares/authorizeRole');
 
 const router = express.Router();
 
@@ -16,13 +17,13 @@ const router = express.Router();
  * @swagger
  * /api/adoptante/perfil:
  *   post:
- *     summary: Crear perfil de adoptante
+ *     summary: Crear perfil de adoptante (HU-US-01)
  *     description: >
  *       Crea el perfil completo del usuario adoptante autenticado.
- *       Solo puede ser ejecutado una vez por usuario.
- *       Requiere seleccionar todas las etiquetas obligatorias del catálogo.
+ *       Solo puede ser ejecutado una vez por usuario con rol adoptante.
+ *       Requiere seleccionar opciones de las categorías obligatorias del catálogo de tags.
  *       La foto de perfil debe enviarse como base64 (JPG o PNG, máximo 5MB).
- *       Al completarse, el estado de la cuenta cambia a 'completo'.
+ *       Al completarse, el estado de la cuenta cambia a 'activo'.
  *     tags: [Adoptante]
  *     security:
  *       - bearerAuth: []
@@ -33,67 +34,38 @@ const router = express.Router();
  *           schema:
  *             type: object
  *             required:
- *               - telefono
+ *               - nombre_completo
+ *               - whatsapp
  *               - ciudad
- *               - direccion
- *               - tags
  *             properties:
- *               telefono:
+ *               nombre_completo:
+ *                 type: string
+ *                 example: "Juan David Lozano"
+ *                 description: Nombre completo del adoptante (3-150 caracteres)
+ *               whatsapp:
  *                 type: string
  *                 example: "3001234567"
- *                 description: Número de teléfono colombiano (ej. 3001234567 o +573001234567)
+ *                 description: Número de WhatsApp colombiano (ej. 3001234567 o +573001234567)
  *               ciudad:
  *                 type: string
- *                 example: "Bogotá"
+ *                 example: "Neiva"
  *                 description: Ciudad de residencia (entre 2 y 100 caracteres)
- *               direccion:
- *                 type: string
- *                 example: "Calle 123 # 45-67"
- *                 description: Dirección de residencia (entre 5 y 255 caracteres)
  *               tags:
  *                 type: array
  *                 items:
- *                   type: integer
- *                 example: [1, 3, 5]
- *                 description: IDs de etiquetas seleccionadas del catálogo
+ *                   type: string
+ *                   format: uuid
+ *                 example: ["uuid-opcion-1", "uuid-opcion-2"]
+ *                 description: UUIDs de opciones de tags seleccionadas del catálogo
  *               foto:
  *                 type: string
  *                 example: "data:image/jpeg;base64,/9j/4AAQ..."
  *                 description: Foto de perfil en base64 (JPG o PNG, máx 5MB). Opcional.
  *     responses:
  *       201:
- *         description: Perfil creado exitosamente
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 message:
- *                   type: string
- *                   example: "Perfil de adoptante creado exitosamente."
- *                 data:
- *                   type: object
- *                   properties:
- *                     id_perfil:
- *                       type: integer
- *                     telefono:
- *                       type: string
- *                     ciudad:
- *                       type: string
- *                     direccion:
- *                       type: string
- *                     foto_url:
- *                       type: string
- *                       nullable: true
- *                     tags:
- *                       type: array
- *                       items:
- *                         type: integer
+ *         description: Perfil creado exitosamente. Cuenta activada.
  *       400:
- *         description: Error de validación (campos inválidos, tags obligatorios faltantes o imagen inválida)
+ *         description: Error de validación (campos inválidos o tags obligatorios faltantes)
  *       401:
  *         description: Token inválido o no proporcionado
  *       403:
@@ -103,14 +75,14 @@ const router = express.Router();
  *       500:
  *         description: Error interno del servidor
  */
-router.post('/perfil', authMiddleware, validatePerfilAdoptante, crearPerfil);
+router.post('/perfil', authMiddleware, authorizeRole(['adoptante']), validatePerfilAdoptante, crearPerfil);
 
 /**
  * @swagger
  * /api/adoptante/perfil:
  *   get:
- *     summary: Obtener perfil de adoptante
- *     description: Retorna los datos básicos y etiquetas del adoptante autenticado.
+ *     summary: Obtener perfil de adoptante (HU-US-02)
+ *     description: Retorna los datos completos y etiquetas del adoptante autenticado.
  *     tags: [Adoptante]
  *     security:
  *       - bearerAuth: []
@@ -121,14 +93,16 @@ router.post('/perfil', authMiddleware, validatePerfilAdoptante, crearPerfil);
  *         description: Perfil no encontrado
  *       401:
  *         description: Token inválido o no proporcionado
+ *       403:
+ *         description: El usuario no tiene rol adoptante
  */
-router.get('/perfil', authMiddleware, getPerfil);
+router.get('/perfil', authMiddleware, authorizeRole(['adoptante']), getPerfil);
 
 /**
  * @swagger
  * /api/adoptante/perfil:
  *   put:
- *     summary: Actualizar datos básicos del perfil
+ *     summary: Actualizar datos básicos del perfil (HU-US-02)
  *     description: Actualiza la información de contacto y foto del adoptante, excluyendo las etiquetas.
  *     tags: [Adoptante]
  *     security:
@@ -140,19 +114,19 @@ router.get('/perfil', authMiddleware, getPerfil);
  *           schema:
  *             type: object
  *             required:
- *               - telefono
+ *               - nombre_completo
+ *               - whatsapp
  *               - ciudad
- *               - direccion
  *             properties:
- *               telefono:
+ *               nombre_completo:
  *                 type: string
- *                 example: "3001234567"
+ *                 example: "Juan David Lozano Pérez"
+ *               whatsapp:
+ *                 type: string
+ *                 example: "3009876543"
  *               ciudad:
  *                 type: string
  *                 example: "Medellín"
- *               direccion:
- *                 type: string
- *                 example: "Carrera 45 # 12-34"
  *               foto:
  *                 type: string
  *                 description: Foto en base64. Opcional.
@@ -165,15 +139,17 @@ router.get('/perfil', authMiddleware, getPerfil);
  *         description: Perfil no encontrado
  *       401:
  *         description: No autorizado
+ *       403:
+ *         description: El usuario no tiene rol adoptante
  */
-router.put('/perfil', authMiddleware, validateUpdatePerfil, updatePerfil);
+router.put('/perfil', authMiddleware, authorizeRole(['adoptante']), validateUpdatePerfil, updatePerfil);
 
 /**
  * @swagger
  * /api/adoptante/etiquetas:
  *   put:
- *     summary: Actualizar etiquetas (preferencias) del adoptante
- *     description: Reemplaza las etiquetas del adoptante actual y recalcula su embedding.
+ *     summary: Actualizar etiquetas (preferencias) del adoptante (HU-US-02)
+ *     description: Reemplaza las etiquetas del adoptante actual. Debe incluir al menos una opción de cada categoría obligatoria.
  *     tags: [Adoptante]
  *     security:
  *       - bearerAuth: []
@@ -189,18 +165,21 @@ router.put('/perfil', authMiddleware, validateUpdatePerfil, updatePerfil);
  *               tags:
  *                 type: array
  *                 items:
- *                   type: integer
- *                 example: [1, 2, 4, 5]
+ *                   type: string
+ *                   format: uuid
+ *                 example: ["uuid-opcion-1", "uuid-opcion-3", "uuid-opcion-5"]
  *     responses:
  *       200:
  *         description: Etiquetas actualizadas exitosamente
  *       400:
- *         description: Error de validación (ej. faltan obligatorias)
+ *         description: Error de validación (ej. faltan categorías obligatorias)
  *       404:
  *         description: Perfil no encontrado
  *       401:
  *         description: No autorizado
+ *       403:
+ *         description: El usuario no tiene rol adoptante
  */
-router.put('/etiquetas', authMiddleware, validateUpdateTags, updateEtiquetas);
+router.put('/etiquetas', authMiddleware, authorizeRole(['adoptante']), validateUpdateTags, updateEtiquetas);
 
 module.exports = router;

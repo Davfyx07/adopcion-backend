@@ -1,25 +1,28 @@
 const pool = require('../config/db');
 
 /**
- * Calcula un vector de embedding binario basado en los tags seleccionados.
- * El vector tiene longitud igual al número total de etiquetas en el catálogo,
- * donde cada posición vale 1.0 si el tag fue seleccionado, 0.0 si no.
- * El orden de posiciones es determinístico: etiquetas ordenadas por id_etiqueta ASC.
+ * Calcula un vector de embedding binario basado en las opciones de tags seleccionadas.
+ * El vector tiene longitud igual al número total de opciones en el catálogo,
+ * donde cada posición vale 1.0 si la opción fue seleccionada, 0.0 si no.
+ * El orden de posiciones es determinístico: opciones ordenadas por id_opcion ASC.
  *
- * @param {number[]} tagIds - IDs de las etiquetas seleccionadas por el usuario
+ * NOTA: El esquema actual de BD no tiene columna 'embedding' en la tabla Adoptante.
+ * Este servicio está listo para cuando se agregue dicha columna al esquema.
+ *
+ * @param {string[]} opcionIds - UUIDs de las opciones seleccionadas por el usuario
  * @returns {Promise<number[]>} Vector de embedding
  */
-const calcularEmbedding = async (tagIds) => {
+const calcularEmbedding = async (opcionIds) => {
     const result = await pool.query(
-        'SELECT id_etiqueta FROM etiqueta ORDER BY id_etiqueta ASC'
+        'SELECT id_opcion FROM Opcion_Tag ORDER BY id_opcion ASC'
     );
 
     if (result.rows.length === 0) {
         return [];
     }
 
-    const tagSet = new Set(tagIds.map(Number));
-    return result.rows.map(row => (tagSet.has(row.id_etiqueta) ? 1.0 : 0.0));
+    const selectedSet = new Set(opcionIds);
+    return result.rows.map(row => (selectedSet.has(row.id_opcion) ? 1.0 : 0.0));
 };
 
 module.exports = { calcularEmbedding };

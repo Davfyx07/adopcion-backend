@@ -1,24 +1,41 @@
 /**
- * Validaciones para HU-US-02: Creación de perfil adoptante
+ * Validaciones para HU-US-01 y HU-US-02: Perfil adoptante
+ * 
+ * Adaptado al esquema real de BD (tabla Adoptante):
+ *   - nombre_completo: obligatorio (NOT NULL en BD)
+ *   - whatsapp: obligatorio (whatsapp_adoptante en BD)
+ *   - ciudad: obligatorio
+ *   - tags: array de UUIDs (opciones de Opcion_Tag)
+ *   - foto: base64 opcional (foto_perfil en BD)
  */
 
 // Teléfono colombiano: 10 dígitos comenzando con 3, o con prefijo +57
 // También acepta fijos: 7 dígitos
 const TELEFONO_REGEX = /^(\+?57)?3[0-9]{9}$|^[2-8][0-9]{6}$/;
 
+// UUID v4 regex para validar IDs de tags
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const validatePerfilAdoptante = (req, res, next) => {
-    const { telefono, ciudad, direccion, tags } = req.body;
+    const { nombre_completo, whatsapp, ciudad, tags } = req.body;
     const errors = [];
 
-    // Teléfono obligatorio y con formato válido
-    if (!telefono) {
-        errors.push({ field: 'telefono', message: 'El teléfono es obligatorio.' });
+    // Nombre completo obligatorio (NOT NULL en tabla Adoptante)
+    if (!nombre_completo || typeof nombre_completo !== 'string' || nombre_completo.trim().length < 3) {
+        errors.push({ field: 'nombre_completo', message: 'El nombre completo es obligatorio (mínimo 3 caracteres).' });
+    } else if (nombre_completo.trim().length > 150) {
+        errors.push({ field: 'nombre_completo', message: 'El nombre no puede exceder 150 caracteres.' });
+    }
+
+    // WhatsApp obligatorio y con formato válido
+    if (!whatsapp) {
+        errors.push({ field: 'whatsapp', message: 'El número de WhatsApp es obligatorio.' });
     } else {
-        const telefonoLimpio = telefono.replace(/[\s\-]/g, '');
-        if (!TELEFONO_REGEX.test(telefonoLimpio)) {
+        const whatsappLimpio = whatsapp.replace(/[\s\-]/g, '');
+        if (!TELEFONO_REGEX.test(whatsappLimpio)) {
             errors.push({
-                field: 'telefono',
-                message: 'El teléfono debe ser un número colombiano válido (ej: 3001234567 o +573001234567).',
+                field: 'whatsapp',
+                message: 'El WhatsApp debe ser un número colombiano válido (ej: 3001234567 o +573001234567).',
             });
         }
     }
@@ -28,18 +45,18 @@ const validatePerfilAdoptante = (req, res, next) => {
         errors.push({ field: 'ciudad', message: 'La ciudad es obligatoria (entre 2 y 100 caracteres).' });
     }
 
-    // Dirección obligatoria
-    if (!direccion || direccion.trim().length < 5 || direccion.trim().length > 255) {
-        errors.push({ field: 'direccion', message: 'La dirección es obligatoria (entre 5 y 255 caracteres).' });
-    }
-
-    // Tags: debe ser un array (o string JSON parseable)
+    // Tags: debe ser un array de UUIDs válidos
     if (tags !== undefined) {
         try {
             const parsed = Array.isArray(tags) ? tags : JSON.parse(tags);
             if (!Array.isArray(parsed)) throw new Error();
+            // Validar que cada tag sea un UUID válido
+            const invalidTags = parsed.filter(t => !UUID_REGEX.test(String(t)));
+            if (invalidTags.length > 0) {
+                errors.push({ field: 'tags', message: 'Los tags deben ser IDs válidos (UUID).' });
+            }
         } catch {
-            errors.push({ field: 'tags', message: 'El campo tags debe ser un arreglo de IDs numéricos.' });
+            errors.push({ field: 'tags', message: 'El campo tags debe ser un arreglo de IDs (UUID).' });
         }
     }
 
@@ -51,18 +68,25 @@ const validatePerfilAdoptante = (req, res, next) => {
 };
 
 const validateUpdatePerfil = (req, res, next) => {
-    const { telefono, ciudad, direccion } = req.body;
+    const { nombre_completo, whatsapp, ciudad } = req.body;
     const errors = [];
 
-    // Teléfono obligatorio y con formato válido
-    if (!telefono) {
-        errors.push({ field: 'telefono', message: 'El teléfono es obligatorio.' });
+    // Nombre completo obligatorio
+    if (!nombre_completo || typeof nombre_completo !== 'string' || nombre_completo.trim().length < 3) {
+        errors.push({ field: 'nombre_completo', message: 'El nombre completo es obligatorio (mínimo 3 caracteres).' });
+    } else if (nombre_completo.trim().length > 150) {
+        errors.push({ field: 'nombre_completo', message: 'El nombre no puede exceder 150 caracteres.' });
+    }
+
+    // WhatsApp obligatorio
+    if (!whatsapp) {
+        errors.push({ field: 'whatsapp', message: 'El número de WhatsApp es obligatorio.' });
     } else {
-        const telefonoLimpio = telefono.replace(/[\s\-]/g, '');
-        if (!TELEFONO_REGEX.test(telefonoLimpio)) {
+        const whatsappLimpio = whatsapp.replace(/[\s\-]/g, '');
+        if (!TELEFONO_REGEX.test(whatsappLimpio)) {
             errors.push({
-                field: 'telefono',
-                message: 'El teléfono debe ser un número colombiano válido (ej: 3001234567 o +573001234567).',
+                field: 'whatsapp',
+                message: 'El WhatsApp debe ser un número colombiano válido (ej: 3001234567 o +573001234567).',
             });
         }
     }
@@ -70,11 +94,6 @@ const validateUpdatePerfil = (req, res, next) => {
     // Ciudad obligatoria
     if (!ciudad || ciudad.trim().length < 2 || ciudad.trim().length > 100) {
         errors.push({ field: 'ciudad', message: 'La ciudad es obligatoria (entre 2 y 100 caracteres).' });
-    }
-
-    // Dirección obligatoria
-    if (!direccion || direccion.trim().length < 5 || direccion.trim().length > 255) {
-        errors.push({ field: 'direccion', message: 'La dirección es obligatoria (entre 5 y 255 caracteres).' });
     }
 
     if (errors.length > 0) {
@@ -94,9 +113,12 @@ const validateUpdateTags = (req, res, next) => {
         try {
             const parsed = Array.isArray(tags) ? tags : JSON.parse(tags);
             if (!Array.isArray(parsed)) throw new Error();
-            if (parsed.some(t => isNaN(Number(t)))) throw new Error();
+            const invalidTags = parsed.filter(t => !UUID_REGEX.test(String(t)));
+            if (invalidTags.length > 0) {
+                errors.push({ field: 'tags', message: 'Los tags deben ser IDs válidos (UUID).' });
+            }
         } catch {
-            errors.push({ field: 'tags', message: 'El campo tags debe ser un arreglo de IDs numéricos.' });
+            errors.push({ field: 'tags', message: 'El campo tags debe ser un arreglo de IDs (UUID).' });
         }
     }
 
