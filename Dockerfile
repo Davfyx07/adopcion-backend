@@ -29,4 +29,4 @@ EXPOSE 8080
 ENV PORT=8080
 
 # Ajusta el comando según cómo inicies tu app (ej: node dist/main.js o node server.js)
-CMD ["node", "src/server.js"]
+CMD ["node", "src/index.js"]
