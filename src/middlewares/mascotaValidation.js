@@ -50,4 +50,25 @@ const validateCreateMascota = (req, res, next) => {
     next();
 };
 
-module.exports = { validateCreateMascota };
+const validateCambioEstado = (req, res, next) => {
+    const { estado, motivo } = req.body;
+    const errors = [];
+    const estadosPermitidos = ['disponible', 'en_proceso', 'adoptado', 'oculto', 'inactivo', 'archivado'];
+
+    if (!estado || !estadosPermitidos.includes(estado)) {
+        errors.push({ field: 'estado', message: `El estado es inválido o no fue proporcionado. Valores permitidos: ${estadosPermitidos.join(', ')}` });
+    }
+
+    const requiereMotivo = ['oculto', 'inactivo', 'archivado'].includes(estado);
+    if (requiereMotivo && (!motivo || typeof motivo !== 'string' || motivo.trim().length < 5)) {
+        errors.push({ field: 'motivo', message: 'El motivo es obligatorio para este estado y debe tener al menos 5 caracteres.' });
+    }
+
+    if (errors.length > 0) {
+        return res.status(400).json({ success: false, errors });
+    }
+
+    next();
+};
+
+module.exports = { validateCreateMascota, validateCambioEstado };

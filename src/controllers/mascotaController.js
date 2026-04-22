@@ -69,4 +69,51 @@ const previsualizarMascota = async (req, res) => {
     }
 };
 
-module.exports = { crearMascota, previsualizarMascota };
+/**
+ * @desc    Cambiar el estado de una mascota
+ * @route   PATCH /api/pets/:id/estado
+ * @access  Private (Sólo Albergue dueño de la mascota)
+ */
+const cambiarEstado = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { estado, motivo } = req.body;
+        const authUserId = req.user.id;
+        const clientIp = req.socket.remoteAddress || req.ip;
+
+        const result = await mascotaService.cambiarEstadoMascota(
+            id,
+            authUserId,
+            estado,
+            motivo,
+            clientIp
+        );
+
+        return res.status(200).json({
+            success: true,
+            message: 'Estado de la mascota actualizado correctamente.',
+            data: result
+        });
+    } catch (error) {
+        console.error('[mascotaController] Error en cambiarEstado:', error);
+        
+        if (error.message.includes('No encontrada') || error.message.includes('No tienes permiso')) {
+            return res.status(404).json({ success: false, message: error.message });
+        }
+        
+        if (error.message.includes('Transición de estado no permitida')) {
+            return res.status(400).json({ success: false, message: error.message });
+        }
+
+        if (error.code === '22P02') {
+            return res.status(400).json({ success: false, message: 'ID de mascota inválido.' });
+        }
+
+        return res.status(500).json({
+            success: false,
+            message: 'Error interno del servidor al cambiar el estado de la mascota.'
+        });
+    }
+};
+
+module.exports = { crearMascota, previsualizarMascota, cambiarEstado };

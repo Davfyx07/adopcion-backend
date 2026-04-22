@@ -1,8 +1,8 @@
 const express = require('express');
 const router = express.Router();
 
-const { crearMascota, previsualizarMascota } = require('../controllers/mascotaController');
-const { validateCreateMascota } = require('../middlewares/mascotaValidation');
+const { crearMascota, previsualizarMascota, cambiarEstado } = require('../controllers/mascotaController');
+const { validateCreateMascota, validateCambioEstado } = require('../middlewares/mascotaValidation');
 const authMiddleware = require('../middlewares/authMiddleware');
 const authorizeRole = require('../middlewares/authorizeRole');
 
@@ -91,5 +91,53 @@ router.post('/', authMiddleware, authorizeRole(['albergue']), validateCreateMasc
  *         description: Error en servidor
  */
 router.get('/:id', previsualizarMascota);
+
+/**
+ * @swagger
+ * /api/pets/{id}/estado:
+ *   patch:
+ *     summary: Cambiar el estado de adopción de una mascota (Solo Albergues)
+ *     tags: [Pets]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         required: true
+ *         description: UUID de la mascota
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - estado
+ *             properties:
+ *               estado:
+ *                 type: string
+ *                 enum: [disponible, en_proceso, adoptado, oculto, inactivo, archivado]
+ *                 description: Nuevo estado de la mascota
+ *               motivo:
+ *                 type: string
+ *                 description: Motivo del cambio (obligatorio para oculto, inactivo, archivado)
+ *     responses:
+ *       200:
+ *         description: Estado actualizado correctamente
+ *       400:
+ *         description: Transición no permitida o motivo faltante
+ *       401:
+ *         description: No autenticado
+ *       403:
+ *         description: No autorizado
+ *       404:
+ *         description: Mascota no encontrada
+ *       500:
+ *         description: Error en servidor
+ */
+router.patch('/:id/estado', authMiddleware, authorizeRole(['albergue']), validateCambioEstado, cambiarEstado);
 
 module.exports = router;
