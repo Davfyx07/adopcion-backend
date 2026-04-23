@@ -24,7 +24,7 @@ USER nodeapp
 
 COPY --from=builder /app ./
 
-# El puerto estándar para contenedores en Azure
+# El puerto estándar para contenedores en Azure.
 EXPOSE 8080
 ENV PORT=8080
 
