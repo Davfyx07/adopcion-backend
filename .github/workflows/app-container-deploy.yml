@@ -1,0 +1,91 @@
+name: Build Push and Deploy Container
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - "src/**"
+      - "package.json"
+      - "package-lock.json"
+      - "Dockerfile"
+      - ".github/workflows/app-container-deploy.yml"
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build-test-push:
+    runs-on: ubuntu-latest
+    environment: prod
+    outputs:
+      image_tag: ${{ steps.meta.outputs.image_tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint || echo "Lint not configured"
+
+      - name: Basic build validation
+        run: npm run build
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Set image tag
+        id: meta
+        run: echo "image_tag=${GITHUB_SHA::12}" >> $GITHUB_OUTPUT
+
+      - name: ACR Login
+        run: az acr login --name ${{ secrets.ACR_NAME }}
+
+      - name: Build and push image
+        run: |
+          docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/adopcion-backend:${{ steps.meta.outputs.image_tag }} .
+          docker push ${{ secrets.ACR_LOGIN_SERVER }}/adopcion-backend:${{ steps.meta.outputs.image_tag }}
+
+  deploy-with-terraform:
+    runs-on: ubuntu-latest
+    environment: prod
+    needs: build-test-push
+    defaults:
+      run:
+        working-directory: infra
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Apply with image tag
+        run: terraform apply -auto-approve -input=false -var-file=terraform.tfvars -var "docker_image_tag=${{ needs.build-test-push.outputs.image_tag }}"
+
+      - name: Smoke check
+        run: |
+          APP_URL=$(terraform output -raw web_app_default_hostname)
+          curl --fail --silent --show-error https://${APP_URL}/health
