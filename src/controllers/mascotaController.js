@@ -1,18 +1,13 @@
 const mascotaService = require('../services/mascotaService');
 
-/**
- * @desc    Registrar una nueva mascota con etiquetas y fotos
- * @route   POST /api/pets
- * @access  Private (Sólo Albergue)
- */
 const crearMascota = async (req, res) => {
     try {
-        const authUserId = req.user.id; // Del authMiddleware
+        const authUserId = req.user.id;
         const clientIp = req.socket.remoteAddress || req.ip;
 
         const result = await mascotaService.crearMascota(
-            authUserId,   // El ID del albergue es el mismo ID del usuario
-            authUserId,   // ID del autor (para auditoría)
+            authUserId,
+            authUserId,
             req.body,
             clientIp
         );
@@ -34,15 +29,9 @@ const crearMascota = async (req, res) => {
     }
 };
 
-/**
- * @desc    Obtener vista previa de una mascota por su ID
- * @route   GET /api/pets/:id
- * @access  Public
- */
 const previsualizarMascota = async (req, res) => {
     try {
         const { id } = req.params;
-
         const mascota = await mascotaService.obtenerMascotaPorId(id);
 
         if (!mascota) {
@@ -52,13 +41,9 @@ const previsualizarMascota = async (req, res) => {
             });
         }
 
-        return res.status(200).json({
-            success: true,
-            data: mascota
-        });
+        return res.status(200).json({ success: true, data: mascota });
     } catch (error) {
         console.error('[mascotaController] Error en previsualizarMascota:', error);
-        // Si el UUID es inválido en postgres, lanzará un error de sintaxis que capturaremos
         if (error.code === '22P02') {
             return res.status(400).json({ success: false, message: 'ID de mascota inválido.' });
         }
@@ -69,11 +54,34 @@ const previsualizarMascota = async (req, res) => {
     }
 };
 
-/**
- * @desc    Cambiar el estado de una mascota
- * @route   PATCH /api/pets/:id/estado
- * @access  Private (Sólo Albergue dueño de la mascota)
- */
+const actualizarMascotaController = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const id_albergue = req.user.id;
+        const ip = req.socket.remoteAddress || req.ip;
+
+        const result = await mascotaService.actualizarMascota({
+            id_mascota: id,
+            id_albergue,
+            data: req.body,
+            ip
+        });
+
+        if (!result.success) {
+            return res.status(result.status).json(result);
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: 'Mascota actualizada exitosamente.',
+            data: result.data
+        });
+    } catch (error) {
+        console.error('[mascotaController] Error en actualizarMascotaController:', error);
+        return res.status(500).json({ success: false, message: 'Error al actualizar la mascota.' });
+    }
+};
+
 const cambiarEstado = async (req, res) => {
     try {
         const { id } = req.params;
@@ -96,11 +104,11 @@ const cambiarEstado = async (req, res) => {
         });
     } catch (error) {
         console.error('[mascotaController] Error en cambiarEstado:', error);
-        
+
         if (error.message.includes('No encontrada') || error.message.includes('No tienes permiso')) {
             return res.status(404).json({ success: false, message: error.message });
         }
-        
+
         if (error.message.includes('Transición de estado no permitida')) {
             return res.status(400).json({ success: false, message: error.message });
         }
@@ -116,4 +124,9 @@ const cambiarEstado = async (req, res) => {
     }
 };
 
-module.exports = { crearMascota, previsualizarMascota, cambiarEstado };
+module.exports = {
+    crearMascota,
+    previsualizarMascota,
+    actualizarMascotaController,
+    cambiarEstado
+};

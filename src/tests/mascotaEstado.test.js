@@ -86,8 +86,8 @@ describe('Módulo de Mascota - Cambio de Estado (HU-MA-03)', () => {
             expect(mockClient.query).toHaveBeenCalledWith(expect.stringContaining('ROLLBACK'));
         });
 
-        it('debe cancelar matches y enviar notificaciones al cambiar a adoptado', async () => {
-            // Mock DB: BEGIN -> SELECT mascota -> UPDATE mascota -> SELECT matches -> UPDATE matches -> INSERT notificacion -> INSERT auditoria -> COMMIT
+        it('debe consultar matches y enviar notificaciones al cambiar a adoptado', async () => {
+            // Mock DB: BEGIN -> SELECT mascota -> UPDATE mascota -> SELECT matches -> INSERT notificacion -> INSERT auditoria -> COMMIT
             mockClient.query
                 .mockResolvedValueOnce({}) // BEGIN
                 .mockResolvedValueOnce({ // SELECT mascota
@@ -95,9 +95,8 @@ describe('Módulo de Mascota - Cambio de Estado (HU-MA-03)', () => {
                 })
                 .mockResolvedValueOnce({}) // UPDATE mascota
                 .mockResolvedValueOnce({ // SELECT matches
-                    rows: [{ id_match: 10, id_adoptante: 100 }]
+                    rows: [{ id_adoptante: 100 }]
                 })
-                .mockResolvedValueOnce({}) // UPDATE matches (cancelados)
                 .mockResolvedValueOnce({}) // INSERT notificacion
                 .mockResolvedValueOnce({}) // INSERT auditoria
                 .mockResolvedValueOnce({}); // COMMIT
@@ -108,7 +107,7 @@ describe('Módulo de Mascota - Cambio de Estado (HU-MA-03)', () => {
 
             expect(res.status).toBe(200);
             expect(res.body.message).toContain('Estado de la mascota actualizado');
-            expect(mockClient.query).toHaveBeenCalledWith(expect.stringContaining('UPDATE Match_Adopcion SET estado = \'cancelado\''), [idMascota]);
+            expect(mockClient.query).toHaveBeenCalledWith(expect.stringContaining('SELECT DISTINCT id_adoptante FROM Match'), [idMascota]);
             expect(mockClient.query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO Notificacion'), expect.any(Array));
         });
 
