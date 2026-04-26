@@ -69,4 +69,37 @@ const previsualizarMascota = async (req, res) => {
     }
 };
 
-module.exports = { crearMascota, previsualizarMascota };
+/**
+ * @desc    Edición completa de mascota (HU-MA-02)
+ * @route   PUT /api/pets/:id
+ * @access  Private (Sólo Albergue dueño)
+ */
+const actualizarMascotaController = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const id_albergue = req.user.id;
+        const ip = req.socket.remoteAddress || req.ip;
+
+        const result = await mascotaService.actualizarMascota({
+            id_mascota: id,
+            id_albergue,
+            data: req.body,
+            ip
+        });
+
+        if (!result.success) {
+            return res.status(result.status).json(result);
+        }
+
+        res.status(200).json({
+            success: true,
+            message: 'Mascota actualizada exitosamente.',
+            data: result.data
+        });
+    } catch (error) {
+        console.error('[mascotaController] Error en actualizarMascotaController:', error);
+        res.status(500).json({ success: false, message: 'Error al actualizar la mascota.' });
+    }
+};
+
+module.exports = { crearMascota, previsualizarMascota, actualizarMascotaController };
