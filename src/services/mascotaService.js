@@ -4,20 +4,14 @@ const { calcularEmbedding } = require('./embeddingService');
 
 const normalizeIsoDate = (value) => {
     const date = new Date(value);
-    if (Number.isNaN(date.getTime())) {
-        return null;
-    }
+    if (Number.isNaN(date.getTime())) return null;
     return date.toISOString();
 };
 
 const arrayEquals = (a = [], b = []) => {
-    if (a.length !== b.length) {
-        return false;
-    }
+    if (a.length !== b.length) return false;
     for (let i = 0; i < a.length; i++) {
-        if (a[i] !== b[i]) {
-            return false;
-        }
+        if (a[i] !== b[i]) return false;
     }
     return true;
 };
@@ -61,20 +55,11 @@ const computeUpdatedFields = ({ mascotaAntes, data, fotosAntes, fotosDespues, ta
     return changes;
 };
 
-/**
- * Crea una nueva mascota transaccionalmente:
- * 1. Inserta la mascota.
- * 2. Sube las fotos a Cloudinary e inserta sus URLs.
- * 3. Valida y asocia los tags.
- * 4. Calcula el embedding.
- * 5. Registra auditoría.
- */
 const crearMascota = async (idAlbergue, authUserId, { nombre, descripcion, fotos, tagsIds }, clientIp) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
 
-        // 1. Insertar mascota
         const resMascota = await client.query(
             `INSERT INTO Mascota (id_albergue, nombre, descripcion, estado_adopcion)
              VALUES ($1, $2, $3, 'disponible')
@@ -83,19 +68,16 @@ const crearMascota = async (idAlbergue, authUserId, { nombre, descripcion, fotos
         );
         const idMascota = resMascota.rows[0].id_mascota;
 
-        // 2. Subir fotos a Cloudinary e insertar
         const fotosUrls = [];
         for (let i = 0; i < fotos.length; i++) {
             const urlSegura = await uploadImage(fotos[i], 'adopcion/mascotas');
             await client.query(
-                `INSERT INTO Mascota_Foto (id_mascota, url_foto, orden) VALUES ($1, $2, $3)`,
+                'INSERT INTO Mascota_Foto (id_mascota, url_foto, orden) VALUES ($1, $2, $3)',
                 [idMascota, urlSegura, i]
             );
             fotosUrls.push({ url: urlSegura, orden: i });
         }
 
-        // 3. Validar tags y asociarlos
-        // Verificamos si los tags proporcionados existen
         const placeholders = tagsIds.map((_, i) => `$${i + 1}`).join(', ');
         const resTags = await client.query(
             `SELECT id_opcion FROM Opcion_Tag WHERE id_opcion IN (${placeholders})`,
@@ -108,17 +90,13 @@ const crearMascota = async (idAlbergue, authUserId, { nombre, descripcion, fotos
 
         for (const tag of resTags.rows) {
             await client.query(
-                `INSERT INTO Mascota_Tag (id_mascota, id_opcion) VALUES ($1, $2)`,
+                'INSERT INTO Mascota_Tag (id_mascota, id_opcion) VALUES ($1, $2)',
                 [idMascota, tag.id_opcion]
             );
         }
 
-        // 4. Calcular embedding (solicitado según requerimientos calculo, pero no guarda en bd aún)
         const vectorEmbedding = await calcularEmbedding(tagsIds);
-        // Aquí se guardaría el embedding si la columna existiera, por ej:
-        // await client.query(`UPDATE Mascota SET embedding = $1 WHERE id_mascota = $2`, [vectorEmbedding, idMascota]);
 
-        // 5. Auditoría
         await client.query(
             `INSERT INTO Log_Auditoria 
                 (id_autor, accion, entidad_afectada, id_registro_afectado, valor_nuevo, ip)
@@ -151,11 +129,7 @@ const crearMascota = async (idAlbergue, authUserId, { nombre, descripcion, fotos
     }
 };
 
-/**
- * Obtener detalle de mascota (Previsualización Pública)
- */
 const obtenerMascotaPorId = async (idMascota) => {
-    // Info principal de la mascota con su albergue
     const mascotaRes = await pool.query(
         `SELECT m.id_mascota, m.nombre, m.descripcion, m.estado_adopcion, m.fecha_publicacion,
                 a.id_usuario AS id_albergue, a.nombre_albergue, a.logo
@@ -166,24 +140,22 @@ const obtenerMascotaPorId = async (idMascota) => {
     );
 
     if (mascotaRes.rows.length === 0) {
-        return null; // No existe o fue borrada
+        return null;
     }
 
     const mascota = mascotaRes.rows[0];
 
-    // Obtener fotos
     const fotosRes = await pool.query(
-        `SELECT id_foto, url_foto, orden 
-         FROM Mascota_Foto 
-         WHERE id_mascota = $1 
+        `SELECT id_foto, url_foto, orden
+         FROM Mascota_Foto
+         WHERE id_mascota = $1
          ORDER BY orden ASC`,
         [idMascota]
     );
     mascota.fotos = fotosRes.rows;
 
-    // Obtener tags
     const tagsRes = await pool.query(
-        `SELECT o.id_opcion, o.valor, t.nombre_tag, t.categoria 
+        `SELECT o.id_opcion, o.valor, t.nombre_tag, t.categoria
          FROM Mascota_Tag mt
          JOIN Opcion_Tag o ON mt.id_opcion = o.id_opcion
          JOIN Tag t ON o.id_tag = t.id_tag
@@ -195,19 +167,14 @@ const obtenerMascotaPorId = async (idMascota) => {
     return mascota;
 };
 
-/**
- * HU-MA-02: Actualización completa de mascota con Bloqueo Optimista
- * IMPORTANTE: Requiere que se agregue la columna 'updated_at' a la tabla Mascota.
- */
 const actualizarMascota = async ({ id_mascota, id_albergue, data, ip }) => {
     const client = await pool.connect();
 
     try {
         await client.query('BEGIN');
 
-        // 1. Obtener mascota FOR UPDATE
         const mascotaRes = await client.query(
-            `SELECT * FROM Mascota WHERE id_mascota = $1 AND deleted_at IS NULL FOR UPDATE`,
+            'SELECT * FROM Mascota WHERE id_mascota = $1 AND deleted_at IS NULL FOR UPDATE',
             [id_mascota]
         );
 
@@ -218,19 +185,16 @@ const actualizarMascota = async ({ id_mascota, id_albergue, data, ip }) => {
 
         const mascota = mascotaRes.rows[0];
 
-        // 2. Validar pertenencia al albergue
         if (mascota.id_albergue !== id_albergue) {
             await client.query('ROLLBACK');
             return { success: false, status: 403, message: 'No tienes permiso para editar esta mascota.' };
         }
 
-        // 3. Validar estado (No se puede editar si está adoptado)
         if (mascota.estado_adopcion === 'adoptado') {
             await client.query('ROLLBACK');
             return { success: false, status: 400, message: 'No se puede editar una mascota que ya fue adoptada.' };
         }
 
-        // 4. Bloqueo Optimista (Optimistic Concurrency Control)
         const dbUpdatedAt = normalizeIsoDate(mascota.updated_at);
         const clientUpdatedAt = normalizeIsoDate(data.updated_at);
         if (!clientUpdatedAt) {
@@ -250,7 +214,6 @@ const actualizarMascota = async ({ id_mascota, id_albergue, data, ip }) => {
         const tagsActualesRes = await client.query('SELECT id_opcion FROM Mascota_Tag WHERE id_mascota = $1', [id_mascota]);
         const tagsAntes = tagsActualesRes.rows.map((row) => row.id_opcion);
 
-        // 5. Gestión de Fotos
         const fotosActualesRes = await client.query('SELECT id_foto, url_foto, orden FROM Mascota_Foto WHERE id_mascota = $1', [id_mascota]);
         const fotosActuales = fotosActualesRes.rows;
 
@@ -265,11 +228,8 @@ const actualizarMascota = async ({ id_mascota, id_albergue, data, ip }) => {
             return { success: false, status: 400, message: 'La mascota debe tener al menos una foto.' };
         }
 
-        // Eliminar fotos si se solicita
         if (data.fotos_eliminadas && data.fotos_eliminadas.length > 0) {
-            const fotosABorrar = fotosEliminadasValidas;
-            
-            for (const foto of fotosABorrar) {
+            for (const foto of fotosEliminadasValidas) {
                 await deleteImage(foto.url_foto, 'adopcion/mascotas');
             }
 
@@ -279,18 +239,15 @@ const actualizarMascota = async ({ id_mascota, id_albergue, data, ip }) => {
             );
         }
 
-        // Procesar fotos recibidas en el body (nuevas en base64 o reordenamiento de existentes)
         if (data.fotos && data.fotos.length > 0) {
             for (const foto of data.fotos) {
                 if (foto.base64) {
-                    // Es una foto nueva
                     const secureUrl = await uploadImage(foto.base64, 'adopcion/mascotas');
                     await client.query(
                         'INSERT INTO Mascota_Foto (id_mascota, url_foto, orden) VALUES ($1, $2, $3)',
                         [id_mascota, secureUrl, foto.orden]
                     );
                 } else if (foto.id_foto) {
-                    // Es una foto existente, solo actualiza el orden
                     await client.query(
                         'UPDATE Mascota_Foto SET orden = $1 WHERE id_foto = $2 AND id_mascota = $3',
                         [foto.orden, foto.id_foto, id_mascota]
@@ -299,7 +256,6 @@ const actualizarMascota = async ({ id_mascota, id_albergue, data, ip }) => {
             }
         }
 
-        // 6. Actualización de Tags y recálculo de Embedding
         let tagsDespues = tagsAntes;
         let embeddingRecalculado = false;
         if (data.tagsIds) {
@@ -319,11 +275,8 @@ const actualizarMascota = async ({ id_mascota, id_albergue, data, ip }) => {
             }
 
             tagsDespues = tagsUnicos;
-
-            // Eliminar actuales
             await client.query('DELETE FROM Mascota_Tag WHERE id_mascota = $1', [id_mascota]);
-            
-            // Insertar nuevos
+
             if (tagsUnicos.length > 0) {
                 const placeholders = tagsUnicos.map((_, i) => `($1, $${i + 2})`).join(', ');
                 await client.query(
@@ -332,26 +285,23 @@ const actualizarMascota = async ({ id_mascota, id_albergue, data, ip }) => {
                 );
             }
 
-            const tagsAntesOrdenados = [...tagsAntes].sort();
-            const tagsDespuesOrdenados = [...tagsDespues].sort();
-            if (!arrayEquals(tagsAntesOrdenados, tagsDespuesOrdenados)) {
+            if (!arrayEquals([...tagsAntes].sort(), [...tagsDespues].sort())) {
                 await calcularEmbedding(tagsUnicos);
                 embeddingRecalculado = true;
             }
         }
 
-        // 7. Actualizar datos base de la mascota
         const updatedRes = await client.query(
-            `UPDATE Mascota SET 
+            `UPDATE Mascota SET
                 nombre = COALESCE($1, nombre),
                 descripcion = COALESCE($2, descripcion),
                 estado_adopcion = COALESCE($3, estado_adopcion),
                 updated_at = NOW()
              WHERE id_mascota = $4 RETURNING *`,
             [
-                data.nombre ?? null, 
-                data.descripcion ?? null, 
-                data.estado_adopcion ?? null, 
+                data.nombre ?? null,
+                data.descripcion ?? null,
+                data.estado_adopcion ?? null,
                 id_mascota
             ]
         );
@@ -371,13 +321,12 @@ const actualizarMascota = async ({ id_mascota, id_albergue, data, ip }) => {
             tagsDespues
         });
 
-        // 8. Auditoría
         await client.query(
             `INSERT INTO Log_Auditoria (id_autor, accion, entidad_afectada, id_registro_afectado, valor_anterior, valor_nuevo, ip, fecha)
              VALUES ($1, 'UPDATE_MASCOTA', 'Mascota', $2, $3, $4, $5, NOW())`,
             [
-                id_albergue, 
-                id_mascota, 
+                id_albergue,
+                id_mascota,
                 JSON.stringify({
                     nombre: mascota.nombre,
                     descripcion: mascota.descripcion,
@@ -403,7 +352,6 @@ const actualizarMascota = async ({ id_mascota, id_albergue, data, ip }) => {
 
         await client.query('COMMIT');
         return { success: true, data: mascotaActualizada };
-
     } catch (err) {
         await client.query('ROLLBACK');
         console.error('[mascotaService] actualizarMascota:', err.message);
@@ -413,4 +361,106 @@ const actualizarMascota = async ({ id_mascota, id_albergue, data, ip }) => {
     }
 };
 
-module.exports = { crearMascota, obtenerMascotaPorId, actualizarMascota };
+const cambiarEstadoMascota = async (idMascota, idAlbergue, nuevoEstado, motivo, clientIp) => {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        const mascotaRes = await client.query(
+            `SELECT id_mascota, id_albergue, estado_adopcion, nombre
+             FROM Mascota
+             WHERE id_mascota = $1 AND deleted_at IS NULL FOR UPDATE`,
+            [idMascota]
+        );
+
+        if (mascotaRes.rows.length === 0) {
+            throw new Error('Mascota no encontrada o ha sido eliminada.');
+        }
+
+        const mascota = mascotaRes.rows[0];
+
+        if (mascota.id_albergue !== idAlbergue) {
+            throw new Error('No tienes permiso para modificar esta mascota.');
+        }
+
+        const estadoActual = mascota.estado_adopcion;
+        const transicionesPermitidas = {
+            disponible: ['en_proceso', 'oculto', 'inactivo', 'archivado'],
+            en_proceso: ['adoptado', 'disponible', 'oculto', 'inactivo', 'archivado'],
+            adoptado: ['oculto'],
+            oculto: ['disponible', 'en_proceso', 'adoptado'],
+            inactivo: ['disponible'],
+            archivado: ['disponible']
+        };
+
+        if (estadoActual === nuevoEstado) {
+            await client.query('ROLLBACK');
+            return { id_mascota: idMascota, estado: estadoActual, message: 'La mascota ya se encuentra en ese estado' };
+        }
+
+        const permitidos = transicionesPermitidas[estadoActual] || [];
+        if (!permitidos.includes(nuevoEstado) && !['oculto', 'inactivo', 'archivado'].includes(nuevoEstado)) {
+            throw new Error(`Transición de estado no permitida: de '${estadoActual}' a '${nuevoEstado}'.`);
+        }
+
+        await client.query(
+            'UPDATE Mascota SET estado_adopcion = $1, updated_at = NOW() WHERE id_mascota = $2',
+            [nuevoEstado, idMascota]
+        );
+
+        if (nuevoEstado === 'adoptado') {
+            const adoptantesRes = await client.query(
+                'SELECT DISTINCT id_adoptante FROM Match WHERE id_mascota = $1',
+                [idMascota]
+            );
+
+            for (const row of adoptantesRes.rows) {
+                await client.query(
+                    `INSERT INTO Notificacion (id_usuario, tipo_notificacion, mensaje, recurso_id)
+                     VALUES ($1, $2, $3, $4)`,
+                    [
+                        row.id_adoptante,
+                        'mascota_adoptada',
+                        `La mascota ${mascota.nombre} ya encontró un hogar.`,
+                        idMascota
+                    ]
+                );
+            }
+        }
+
+        await client.query(
+            `INSERT INTO Log_Auditoria
+                (id_autor, accion, entidad_afectada, id_registro_afectado, valor_anterior, valor_nuevo, ip)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [
+                idAlbergue,
+                'cambio_estado_mascota',
+                'Mascota',
+                idMascota,
+                { estado: estadoActual },
+                { estado: nuevoEstado, motivo: motivo || null },
+                clientIp
+            ]
+        );
+
+        await client.query('COMMIT');
+        return {
+            id_mascota: idMascota,
+            estado_anterior: estadoActual,
+            nuevo_estado: nuevoEstado
+        };
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('[mascotaService] Error en cambiarEstadoMascota:', error);
+        throw error;
+    } finally {
+        client.release();
+    }
+};
+
+module.exports = {
+    crearMascota,
+    obtenerMascotaPorId,
+    actualizarMascota,
+    cambiarEstadoMascota
+};

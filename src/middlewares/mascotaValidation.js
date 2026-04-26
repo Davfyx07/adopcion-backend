@@ -3,17 +3,15 @@ const { validateBase64Image } = require('../services/storageService');
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const validateCreateMascota = (req, res, next) => {
-    const { nombre, descripcion, fotos, tagsIds } = req.body;
+    const { nombre, fotos, tagsIds } = req.body;
     const errors = [];
 
-    // Validar nombre
     if (!nombre || typeof nombre !== 'string' || nombre.trim().length < 2) {
         errors.push({ field: 'nombre', message: 'El nombre es obligatorio y debe tener al menos 2 caracteres.' });
     } else if (nombre.length > 100) {
         errors.push({ field: 'nombre', message: 'El nombre no puede exceder 100 caracteres.' });
     }
 
-    // Validar fotos: array de 1 a 5 elementos en base64
     if (!fotos || !Array.isArray(fotos)) {
         errors.push({ field: 'fotos', message: 'Debe enviarse un arreglo de fotos en formato base64.' });
     } else if (fotos.length < 1 || fotos.length > 5) {
@@ -31,13 +29,12 @@ const validateCreateMascota = (req, res, next) => {
         });
     }
 
-    // Validar tagsIds: array de UUIDs
     if (!tagsIds || !Array.isArray(tagsIds)) {
         errors.push({ field: 'tagsIds', message: 'Debe enviarse un arreglo de IDs de tags (tagsIds).' });
     } else if (tagsIds.length === 0) {
         errors.push({ field: 'tagsIds', message: 'Debe especificar al menos un tag válido.' });
     } else {
-        const invalidTags = tagsIds.filter(t => !UUID_REGEX.test(String(t)));
+        const invalidTags = tagsIds.filter((t) => !UUID_REGEX.test(String(t)));
         if (invalidTags.length > 0) {
             errors.push({ field: 'tagsIds', message: 'Todos los tagsIds deben ser UUIDs válidos.' });
         }
@@ -47,7 +44,7 @@ const validateCreateMascota = (req, res, next) => {
         return res.status(400).json({ success: false, errors });
     }
 
-    next();
+    return next();
 };
 
 const validateUUIDParam = (req, res, next) => {
@@ -55,7 +52,7 @@ const validateUUIDParam = (req, res, next) => {
     if (!id || !UUID_REGEX.test(id)) {
         return res.status(400).json({ success: false, message: 'ID de mascota inválido (debe ser UUID).' });
     }
-    next();
+    return next();
 };
 
 const validateUpdateMascota = (req, res, next) => {
@@ -81,7 +78,6 @@ const validateUpdateMascota = (req, res, next) => {
         errors.push({ field: 'updated_at', message: 'updated_at debe ser una fecha válida en formato ISO.' });
     }
 
-    // Validar fotos: debe ser un array de objetos { id_foto?, base64?, orden }
     if (fotos) {
         if (!Array.isArray(fotos)) {
             errors.push({ field: 'fotos', message: 'fotos debe ser un arreglo.' });
@@ -105,7 +101,7 @@ const validateUpdateMascota = (req, res, next) => {
     if (fotos_eliminadas && !Array.isArray(fotos_eliminadas)) {
         errors.push({ field: 'fotos_eliminadas', message: 'fotos_eliminadas debe ser un arreglo de IDs.' });
     } else if (Array.isArray(fotos_eliminadas)) {
-        const invalidFotos = fotos_eliminadas.filter(id => !UUID_REGEX.test(String(id)));
+        const invalidFotos = fotos_eliminadas.filter((id) => !UUID_REGEX.test(String(id)));
         if (invalidFotos.length > 0) {
             errors.push({ field: 'fotos_eliminadas', message: 'Todos los IDs en fotos_eliminadas deben ser UUID válidos.' });
         }
@@ -115,7 +111,7 @@ const validateUpdateMascota = (req, res, next) => {
         if (!Array.isArray(tagsIds)) {
             errors.push({ field: 'tagsIds', message: 'tagsIds debe ser un arreglo de UUIDs.' });
         } else {
-            const invalidTags = tagsIds.filter(t => !UUID_REGEX.test(String(t)));
+            const invalidTags = tagsIds.filter((t) => !UUID_REGEX.test(String(t)));
             if (invalidTags.length > 0) {
                 errors.push({ field: 'tagsIds', message: 'Todos los tagsIds deben ser UUIDs válidos.' });
             }
@@ -126,7 +122,36 @@ const validateUpdateMascota = (req, res, next) => {
         return res.status(400).json({ success: false, errors });
     }
 
-    next();
+    return next();
 };
 
-module.exports = { validateCreateMascota, validateUUIDParam, validateUpdateMascota };
+const validateCambioEstado = (req, res, next) => {
+    const { estado, motivo } = req.body;
+    const errors = [];
+    const estadosPermitidos = ['disponible', 'en_proceso', 'adoptado', 'oculto', 'inactivo', 'archivado'];
+
+    if (!estado || !estadosPermitidos.includes(estado)) {
+        errors.push({
+            field: 'estado',
+            message: `El estado es inválido o no fue proporcionado. Valores permitidos: ${estadosPermitidos.join(', ')}`
+        });
+    }
+
+    const requiereMotivo = ['oculto', 'inactivo', 'archivado'].includes(estado);
+    if (requiereMotivo && (!motivo || typeof motivo !== 'string' || motivo.trim().length < 5)) {
+        errors.push({ field: 'motivo', message: 'El motivo es obligatorio para este estado y debe tener al menos 5 caracteres.' });
+    }
+
+    if (errors.length > 0) {
+        return res.status(400).json({ success: false, errors });
+    }
+
+    return next();
+};
+
+module.exports = {
+    validateCreateMascota,
+    validateUUIDParam,
+    validateUpdateMascota,
+    validateCambioEstado
+};
