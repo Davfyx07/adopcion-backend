@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 
 const authMiddleware = require('../middlewares/authMiddleware');
-const { allowRoles } = require('../middlewares/roleMiddleware');
+const authorizeRole = require('../middlewares/authorizeRole');
 
 const {
     validateCreateTag,
@@ -17,31 +17,31 @@ const {
     addOpciones
 } = require('../controllers/tagController');
 
-router.get('/admin/etiquetas', authMiddleware, allowRoles('admin'), getTags);
+router.get('/admin/etiquetas', authMiddleware, authorizeRole(['administrador']), getTags);
 
 router.post('/admin/etiquetas',
     authMiddleware,
-    allowRoles('admin'),
+    authorizeRole(['administrador']),
     validateCreateTag,
     createTag
 );
 
 router.put('/admin/etiquetas/:id',
     authMiddleware,
-    allowRoles('admin'),
+    authorizeRole(['administrador']),
     validateUpdateTag,
     updateTag
 );
 
 router.delete('/admin/etiquetas/:id',
     authMiddleware,
-    allowRoles('admin'),
+    authorizeRole(['administrador']),
     deleteTag
 );
 
 router.post('/admin/etiquetas/:id/opciones',
     authMiddleware,
-    allowRoles('admin'),
+    authorizeRole(['administrador']),
     addOpciones
 );
 

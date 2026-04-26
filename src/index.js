@@ -50,6 +50,7 @@ const etiquetaRoutes = require('./routes/etiquetaRoutes');
 
 const albergueRoutes = require('./routes/albergueRoutes');
 const mascotaRoutes = require('./routes/mascotaRoutes');
+const tagRoutes = require('./routes/tagRoutes');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/adoptante', adoptanteRoutes);
@@ -57,6 +58,7 @@ app.use('/api/etiquetas', etiquetaRoutes);
 app.use('/api/albergue', albergueRoutes);
 app.use('/api/pets', mascotaRoutes);
 app.use('/api/mascotas', mascotaRoutes);
+app.use('/api', tagRoutes);
 
 app.get('/health', (_, res) => res.json({ success: true }));
 

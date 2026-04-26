@@ -1,7 +1,7 @@
 const pool = require('../config/db');
 
 const getTags = async (estado) => {
-    let query = `SELECT * FROM tag WHERE deleted_at IS NULL`;
+    let query = 'SELECT * FROM tag';
     const params = [];
 
     if (estado) {
@@ -30,11 +30,12 @@ const createTag = async (data, userId, ip) => {
         }
 
         const result = await client.query(
-            `INSERT INTO tag (nombre_tag, peso_matching, es_filtro_absoluto, estado)
-             VALUES ($1, $2, $3, 'activo')
+            `INSERT INTO tag (nombre_tag, categoria, peso_matching, es_filtro_absoluto, estado)
+             VALUES ($1, $2, $3, $4, 'activo')
              RETURNING *`,
             [
                 data.nombre_tag,
+                data.categoria || 'General',
                 data.peso_matching,
                 data.es_filtro_absoluto || false
             ]
@@ -69,7 +70,7 @@ const updateTag = async (id, data, userId, ip) => {
         await client.query('BEGIN');
 
         const currentRes = await client.query(
-            `SELECT * FROM tag WHERE id_tag = $1 AND deleted_at IS NULL`,
+            'SELECT * FROM tag WHERE id_tag = $1',
             [id]
         );
 
@@ -94,13 +95,15 @@ const updateTag = async (id, data, userId, ip) => {
         const result = await client.query(
             `UPDATE tag SET
                 nombre_tag = COALESCE($1, nombre_tag),
-                peso_matching = COALESCE($2, peso_matching),
-                estado = COALESCE($3, estado),
-                es_filtro_absoluto = COALESCE($4, es_filtro_absoluto)
-             WHERE id_tag = $5
+                categoria = COALESCE($2, categoria),
+                peso_matching = COALESCE($3, peso_matching),
+                estado = COALESCE($4, estado),
+                es_filtro_absoluto = COALESCE($5, es_filtro_absoluto)
+             WHERE id_tag = $6
              RETURNING *`,
             [
                 data.nombre_tag ?? null,
+                data.categoria ?? null,
                 data.peso_matching ?? null,
                 data.estado ?? null,
                 data.es_filtro_absoluto ?? null,
@@ -156,10 +159,7 @@ const deleteTag = async (id, userId, ip) => {
             return { success: false, status: 400, message: 'Tag obligatorio no eliminable' };
         }
 
-        await client.query(
-            `UPDATE tag SET deleted_at = NOW() WHERE id_tag = $1`,
-            [id]
-        );
+        await client.query('UPDATE tag SET estado = $1 WHERE id_tag = $2', ['inactivo', id]);
 
         await client.query(
             `INSERT INTO log_auditoria 
@@ -185,6 +185,11 @@ const addOpciones = async (id, opciones, userId, ip) => {
 
     try {
         await client.query('BEGIN');
+
+        if (!Array.isArray(opciones) || opciones.length === 0) {
+            await client.query('ROLLBACK');
+            return { success: false, status: 400, message: 'Debes enviar al menos una opción.' };
+        }
 
         for (const op of opciones) {
             await client.query(
