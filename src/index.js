@@ -10,12 +10,25 @@ const PORT = process.env.PORT || 3000;
 
 app.use(helmet());
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+
+// Servir archivos estáticos (logos locales)
+const path = require('path');
+app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
 // Swagger config
 const swaggerOptions = {
     definition: {
         openapi: '3.0.0',
+        components: {
+            securitySchemes: {
+                bearerAuth: {
+                    type: 'http',
+                    scheme: 'bearer',
+                    bearerFormat: 'JWT',
+                }
+            }
+        },
         info: {
             title: 'Adopción Mascotas API',
             version: '1.0.0',
@@ -32,7 +45,17 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
 
 // Rutas
 const authRoutes = require('./routes/authRoutes');
+const adoptanteRoutes = require('./routes/adoptanteRoutes');
+const etiquetaRoutes = require('./routes/etiquetaRoutes');
+
+const albergueRoutes = require('./routes/albergueRoutes');
+const mascotaRoutes = require('./routes/mascotaRoutes');
+
 app.use('/api/auth', authRoutes);
+app.use('/api/adoptante', adoptanteRoutes);
+app.use('/api/etiquetas', etiquetaRoutes);
+app.use('/api/albergue', albergueRoutes);
+app.use('/api/pets', mascotaRoutes);
 
 app.get('/health', (_, res) => res.json({ success: true }));
 

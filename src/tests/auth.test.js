@@ -31,7 +31,7 @@ describe('Módulo de Recuperación de Contraseña (HU-AUTH-03)', () => {
         pool.connect.mockResolvedValue(mockClient);
     });
 
-    describe('POST /api/auth/recuperar-password', () => {
+    describe('POST /api/auth/forgot-password', () => {
         it('debe enviar un correo de recuperación si el usuario existe', async () => {
             // Mock búsqueda de usuario
             mockClient.query
@@ -41,25 +41,26 @@ describe('Módulo de Recuperación de Contraseña (HU-AUTH-03)', () => {
                 });
 
             const res = await request(app)
-                .post('/api/auth/recuperar-password')
-                .send({ correo: 'test@ejemplo.com' });
+                .post('/api/auth/forgot-password')
+                .send({ email: 'test@ejemplo.com' });
 
             expect(res.status).toBe(200);
-            expect(res.body.message).toContain('Se ha enviado un enlace de recuperación');
-            expect(mockClient.query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO recuperacion_password'), expect.any(Array));
+            expect(res.body.message).toContain('Enlace de recuperación enviado con éxito');
+            expect(mockClient.query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO Recuperacion_Password'), expect.any(Array));
         });
 
-        it('debe retornar 404 si el usuario no existe', async () => {
+        it('debe enviar una respuesta exitosa incluso si el usuario no existe (seguridad)', async () => {
             mockClient.query
                 .mockResolvedValueOnce({}) // BEGIN
                 .mockResolvedValueOnce({ rows: [] }); // SELECT user
 
             const res = await request(app)
-                .post('/api/auth/recuperar-password')
-                .send({ correo: 'noexiste@ejemplo.com' });
+                .post('/api/auth/forgot-password')
+                .send({ email: 'noexiste@ejemplo.com' });
 
-            expect(res.status).toBe(404);
-            expect(res.body.message).toContain('No se encontró un usuario');
+            // El servicio retorna 200 con el mensaje de " pronto recibirás un enlace" para no dar pistas de enumeración de usuarios
+            expect(res.status).toBe(200);
+            expect(res.body.message).toContain('recibirás un enlace pronto');
         });
     });
 
@@ -90,12 +91,12 @@ describe('Módulo de Recuperación de Contraseña (HU-AUTH-03)', () => {
 
             const res = await request(app)
                 .post('/api/auth/reset-password')
-                .send({ token: tokenValido, nuevaPassword: 'NuevaContrasena123!' });
+                .send({ token: tokenValido, newPassword: 'NuevaContrasena123!' });
 
             expect(res.status).toBe(200);
-            expect(res.body.message).toContain('exitosamente');
+            expect(res.body.message).toContain('Contraseña actualizada');
             expect(mockClient.query).toHaveBeenCalledWith(expect.stringContaining('UPDATE Usuario SET password_hash'), expect.any(Array));
-            expect(mockClient.query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO log_auditoria'), expect.any(Array));
+            expect(mockClient.query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO Log_Auditoria'), expect.any(Array));
         });
 
         it('debe retornar 400 si el token es inválido', async () => {
@@ -105,10 +106,10 @@ describe('Módulo de Recuperación de Contraseña (HU-AUTH-03)', () => {
 
             const res = await request(app)
                 .post('/api/auth/reset-password')
-                .send({ token: 'token-invalido', nuevaPassword: 'NuevaContrasena123!' });
+                .send({ token: 'token-invalido', newPassword: 'NuevaContrasena123!' });
 
             expect(res.status).toBe(400);
-            expect(res.body.message).toContain('inválido o ha expirado');
+            expect(res.body.message).toContain('Token inválido o expirado');
         });
     });
 });
