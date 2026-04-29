@@ -35,7 +35,7 @@ const swaggerOptions = {
             description: 'API para la plataforma de adopción de mascotas',
         },
         servers: [
-            { url: `http://localhost:${PORT}` }
+            { url: `http://localhost:${process.env.SWAGGER_PORT || PORT}` }
         ]
     },
     apis: ['./src/routes/*.js']
@@ -56,7 +56,6 @@ app.use('/api/auth', authRoutes);
 app.use('/api/adoptante', adoptanteRoutes);
 app.use('/api/etiquetas', etiquetaRoutes);
 app.use('/api/albergue', albergueRoutes);
-app.use('/api/pets', mascotaRoutes);
 app.use('/api/mascotas', mascotaRoutes);
 app.use('/api', tagRoutes);
 

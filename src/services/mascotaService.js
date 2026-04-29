@@ -385,12 +385,13 @@ const cambiarEstadoMascota = async (idMascota, idAlbergue, nuevoEstado, motivo, 
 
         const estadoActual = mascota.estado_adopcion;
         const transicionesPermitidas = {
-            disponible: ['en_proceso', 'oculto', 'inactivo', 'archivado'],
-            en_proceso: ['adoptado', 'disponible', 'oculto', 'inactivo', 'archivado'],
+            disponible: ['en_proceso', 'oculto', 'inactivo', 'archivado', 'pausado'],
+            en_proceso: ['adoptado', 'disponible', 'oculto', 'inactivo', 'archivado', 'pausado'],
             adoptado: ['oculto'],
             oculto: ['disponible', 'en_proceso', 'adoptado'],
             inactivo: ['disponible'],
-            archivado: ['disponible']
+            archivado: ['disponible'],
+            pausado: ['disponible', 'en_proceso']
         };
 
         if (estadoActual === nuevoEstado) {
