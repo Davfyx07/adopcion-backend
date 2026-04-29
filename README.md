@@ -46,6 +46,22 @@ npm run dev
 ```
 La consola debería mostrarte: `Server corriendo en http://localhost:3000`
 
+### 5. Ejecutar con Docker
+Si prefieres correr el backend en un contenedor, puedes construir la imagen y exponerla en un puerto libre del host. El contenedor escucha en el puerto `8080` internamente:
+
+```bash
+docker build -t adopcion-backend-local .
+docker run --rm -p 8081:8080 --env-file .env --name adopcion-backend-local adopcion-backend-local
+```
+
+Luego puedes probar la API en:
+
+```bash
+http://localhost:8081/health
+```
+
+Si el puerto `8081` también está ocupado en tu máquina, cámbialo por otro libre del host manteniendo el `8080` del contenedor.
+
 ---
 
 ## 📖 Documentación de la API (Swagger)
