@@ -23,7 +23,7 @@ app.use((req, res, next) => {
     req.socket = { remoteAddress: '127.0.0.1' };
     next();
 });
-app.use('/api/pets', mascotaRoutes);
+app.use('/api/mascotas', mascotaRoutes);
 
 describe('Módulo de Mascota - Cambio de Estado (HU-MA-03)', () => {
     let mockClient;
@@ -37,7 +37,7 @@ describe('Módulo de Mascota - Cambio de Estado (HU-MA-03)', () => {
         pool.connect.mockResolvedValue(mockClient);
     });
 
-    describe('PATCH /api/pets/:id/estado', () => {
+    describe('PATCH /api/mascotas/:id/estado', () => {
         const idMascota = '123e4567-e89b-12d3-a456-426614174000'; // UUID válido para no fallar en otras capas si las hubiera
 
         it('debe cambiar el estado exitosamente (disponible -> en_proceso)', async () => {
@@ -52,7 +52,7 @@ describe('Módulo de Mascota - Cambio de Estado (HU-MA-03)', () => {
                 .mockResolvedValueOnce({}); // COMMIT
 
             const res = await request(app)
-                .patch(`/api/pets/${idMascota}/estado`)
+                .patch(`/api/mascotas/${idMascota}/estado`)
                 .send({ estado: 'en_proceso' });
 
             expect(res.status).toBe(200);
@@ -62,7 +62,7 @@ describe('Módulo de Mascota - Cambio de Estado (HU-MA-03)', () => {
 
         it('debe requerir motivo si se cambia a oculto', async () => {
             const res = await request(app)
-                .patch(`/api/pets/${idMascota}/estado`)
+                .patch(`/api/mascotas/${idMascota}/estado`)
                 .send({ estado: 'oculto' });
 
             expect(res.status).toBe(400);
@@ -78,7 +78,7 @@ describe('Módulo de Mascota - Cambio de Estado (HU-MA-03)', () => {
                 });
 
             const res = await request(app)
-                .patch(`/api/pets/${idMascota}/estado`)
+                .patch(`/api/mascotas/${idMascota}/estado`)
                 .send({ estado: 'disponible' });
 
             expect(res.status).toBe(400);
@@ -102,7 +102,7 @@ describe('Módulo de Mascota - Cambio de Estado (HU-MA-03)', () => {
                 .mockResolvedValueOnce({}); // COMMIT
 
             const res = await request(app)
-                .patch(`/api/pets/${idMascota}/estado`)
+                .patch(`/api/mascotas/${idMascota}/estado`)
                 .send({ estado: 'adoptado' });
 
             expect(res.status).toBe(200);
@@ -119,7 +119,7 @@ describe('Módulo de Mascota - Cambio de Estado (HU-MA-03)', () => {
                 });
 
             const res = await request(app)
-                .patch(`/api/pets/${idMascota}/estado`)
+                .patch(`/api/mascotas/${idMascota}/estado`)
                 .send({ estado: 'en_proceso' });
 
             expect(res.status).toBe(404);
