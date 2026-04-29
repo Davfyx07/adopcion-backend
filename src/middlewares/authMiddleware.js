@@ -1,6 +1,6 @@
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
-const pool = require('../config/db');
+const prisma = require('../config/prisma');
 
 const isTokenBlacklisted = async (token) => {
     const tokenHash = crypto
@@ -8,15 +8,15 @@ const isTokenBlacklisted = async (token) => {
         .update(token)
         .digest('hex');
 
-    const result = await pool.query(
-        `SELECT 1 
-         FROM Blacklist_Token 
-         WHERE token_hash = $1 
-         AND fecha_expiracion > NOW()`,
-        [tokenHash]
-    );
+    const result = await prisma.blacklist_token.findFirst({
+        where: {
+            token_hash: tokenHash,
+            fecha_expiracion: { gt: new Date() }
+        },
+        select: { id: true }
+    });
 
-    return result.rows.length > 0;
+    return result !== null;
 };
 
 const authMiddleware = async (req, res, next) => {

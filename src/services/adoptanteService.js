@@ -1,147 +1,140 @@
-const pool = require('../config/db');
+const prisma = require('../config/prisma');
 const { uploadImage, validateBase64Image, deleteImage } = require('./storageService');
 const { validarTagsObligatorios } = require('./etiquetaService');
+const { calcularEmbedding } = require('./embeddingService');
 
 /**
  * HU-US-01: Crea el perfil de un adoptante de forma atómica.
  * 
  * Adaptado al esquema real de BD:
- *   - Tabla: Adoptante (PK compartida con Usuario via id_usuario UUID)
+ *   - Tabla: Adoptante (PK compartida con Usuario via id_usuario)
  *   - Columnas: nombre_completo, foto_perfil, whatsapp_adoptante, ciudad
  *   - Tags: Adoptante_Tag (id_usuario, id_opcion) → referencia Opcion_Tag
  */
 const crearPerfilAdoptante = async ({ idUsuario, nombre_completo, whatsapp, ciudad, tagIds, fotoBase64, ip }) => {
-    const client = await pool.connect();
-
     try {
-        await client.query('BEGIN');
+        return await prisma.$transaction(async (tx) => {
+            // 1. Verificar rol adoptante y estado
+            const user = await tx.usuario.findUnique({
+                where: { id_usuario: idUsuario },
+                include: { rol: true }
+            });
 
-        // 1. Verificar rol adoptante
-        const userResult = await client.query(
-            `SELECT u.id_usuario, u.estado_cuenta, r.nombre_rol
-             FROM Usuario u
-             JOIN Rol r ON u.id_rol = r.id_rol
-             WHERE u.id_usuario = $1 AND u.deleted_at IS NULL`,
-            [idUsuario]
-        );
+            if (!user) {
+                return { success: false, status: 404, message: 'Usuario no encontrado.' };
+            }
 
-        if (userResult.rows.length === 0) {
-            await client.query('ROLLBACK');
-            return { success: false, status: 404, message: 'Usuario no encontrado.' };
-        }
-
-        const user = userResult.rows[0];
-
-        if (user.nombre_rol.toLowerCase() !== 'adoptante') {
-            await client.query('ROLLBACK');
-            return {
-                success: false,
-                status: 403,
-                message: 'Solo los usuarios con rol adoptante pueden crear un perfil de adoptante.',
-            };
-        }
-
-        if (user.estado_cuenta !== 'perfil_incompleto') {
-            await client.query('ROLLBACK');
-            return { success: false, status: 409, message: 'Tu perfil ya fue completado anteriormente.' };
-        }
-
-        // 2. Verificar que no tenga perfil creado (doble check)
-        const perfilExistente = await client.query(
-            'SELECT id_usuario FROM Adoptante WHERE id_usuario = $1',
-            [idUsuario]
-        );
-
-        if (perfilExistente.rows.length > 0) {
-            await client.query('ROLLBACK');
-            return { success: false, status: 409, message: 'Ya tienes un perfil de adoptante creado.' };
-        }
-
-        // 3. Validar tags obligatorios (al menos 1 opción por cada Tag con es_filtro_absoluto)
-        if (tagIds && tagIds.length > 0) {
-            const validacion = await validarTagsObligatorios(tagIds, client);
-            if (!validacion.valid) {
-                await client.query('ROLLBACK');
+            if (user.rol.nombre_rol.toLowerCase() !== 'adoptante') {
                 return {
                     success: false,
-                    status: 400,
-                    message: 'Debes seleccionar al menos una opción de cada categoría obligatoria.',
-                    data: { tags_faltantes: validacion.tagsFaltantes },
+                    status: 403,
+                    message: 'Solo los usuarios con rol adoptante pueden crear un perfil de adoptante.',
                 };
             }
 
-            // 4. Validar que los IDs de opciones existen en Opcion_Tag
-            const validTagsResult = await client.query(
-                'SELECT COUNT(*) AS total FROM Opcion_Tag WHERE id_opcion = ANY($1)',
-                [tagIds]
-            );
-            if (parseInt(validTagsResult.rows[0].total) !== tagIds.length) {
-                await client.query('ROLLBACK');
-                return { success: false, status: 400, message: 'Una o más opciones seleccionadas no existen.' };
+            if (user.estado_cuenta !== 'perfil_incompleto') {
+                return { success: false, status: 409, message: 'Tu perfil ya fue completado anteriormente.' };
             }
-        }
 
-        // 5. Validar y subir foto si se proporciona
-        let fotoUrl = null;
-        if (fotoBase64) {
-            const validacionFoto = validateBase64Image(fotoBase64);
-            if (!validacionFoto.valid) {
-                await client.query('ROLLBACK');
-                return { success: false, status: 400, message: validacionFoto.message };
+            // 2. Verificar que no tenga perfil creado (doble check)
+            const perfilExistente = await tx.adoptante.findUnique({
+                where: { id_usuario: idUsuario }
+            });
+
+            if (perfilExistente) {
+                return { success: false, status: 409, message: 'Ya tienes un perfil de adoptante creado.' };
             }
-            fotoUrl = await uploadImage(fotoBase64, 'adopcion/adoptantes');
-        }
 
-        // 6. Crear registro en tabla Adoptante (PK compartida con Usuario)
-        await client.query(
-            `INSERT INTO Adoptante (id_usuario, nombre_completo, foto_perfil, whatsapp_adoptante, ciudad)
-             VALUES ($1, $2, $3, $4, $5)`,
-            [idUsuario, nombre_completo.trim(), fotoUrl, whatsapp.trim(), ciudad.trim()]
-        );
+            // 3. Validar tags obligatorios (al menos 1 opción por cada Tag con es_filtro_absoluto)
+            if (tagIds && tagIds.length > 0) {
+                // validarTagsObligatorios usa prisma global, pero es solo lectura
+                const validacion = await validarTagsObligatorios(tagIds);
+                if (!validacion.valid) {
+                    return {
+                        success: false,
+                        status: 400,
+                        message: 'Debes seleccionar al menos una opción de cada categoría obligatoria.',
+                        data: { tags_faltantes: validacion.tagsFaltantes },
+                    };
+                }
 
-        // 7. Guardar tags en Adoptante_Tag
-        if (tagIds && tagIds.length > 0) {
-            const placeholders = tagIds.map((_, i) => `($1, $${i + 2})`).join(', ');
-            await client.query(
-                `INSERT INTO Adoptante_Tag (id_usuario, id_opcion) VALUES ${placeholders}`,
-                [idUsuario, ...tagIds]
-            );
-        }
+                // 4. Validar que los IDs de opciones existen en Opcion_Tag
+                const count = await tx.opcion_tag.count({
+                    where: { id_opcion: { in: tagIds } }
+                });
+                if (count !== tagIds.length) {
+                    return { success: false, status: 400, message: 'Una o más opciones seleccionadas no existen.' };
+                }
+            }
 
-        // 8. Actualizar estado_cuenta a 'activo'
-        await client.query(
-            "UPDATE Usuario SET estado_cuenta = 'activo' WHERE id_usuario = $1",
-            [idUsuario]
-        );
+            // 5. Validar y subir foto si se proporciona
+            let fotoUrl = null;
+            if (fotoBase64) {
+                const validacionFoto = validateBase64Image(fotoBase64);
+                if (!validacionFoto.valid) {
+                    return { success: false, status: 400, message: validacionFoto.message };
+                }
+                fotoUrl = await uploadImage(fotoBase64, 'adopcion/adoptantes');
+            }
 
-        // 9. Log de auditoría
-        await client.query(
-            `INSERT INTO Log_Auditoria (id_autor, accion, entidad_afectada, id_registro_afectado, ip, fecha)
-             VALUES ($1, 'CREACION_PERFIL_ADOPTANTE', 'Adoptante', $1, $2, NOW())`,
-            [idUsuario, ip]
-        );
+            // 6. Calcular embedding
+            const embedding = tagIds && tagIds.length > 0 ? await calcularEmbedding(tagIds) : [];
 
-        await client.query('COMMIT');
+            // 7. Crear registro en tabla Adoptante (PK compartida con Usuario)
+            await tx.adoptante.create({
+                data: {
+                    id_usuario: idUsuario,
+                    nombre_completo: nombre_completo.trim(),
+                    foto_perfil: fotoUrl,
+                    whatsapp_adoptante: whatsapp.trim(),
+                    ciudad: ciudad.trim(),
+                    embedding: embedding.length > 0 ? JSON.stringify(embedding) : null,
+                }
+            });
 
-        return {
-            success: true,
-            data: {
-                id_usuario: idUsuario,
-                nombre_completo: nombre_completo.trim(),
-                whatsapp: whatsapp.trim(),
-                ciudad: ciudad.trim(),
-                foto_url: fotoUrl,
-                tags: tagIds || [],
-                estado_cuenta: 'activo',
-            },
-        };
+            // 8. Guardar tags en Adoptante_Tag
+            if (tagIds && tagIds.length > 0) {
+                await tx.adoptante_tag.createMany({
+                    data: tagIds.map(id_opcion => ({
+                        id_usuario: idUsuario,
+                        id_opcion,
+                    })),
+                });
+            }
 
+            // 9. Actualizar estado_cuenta a 'activo'
+            await tx.usuario.update({
+                where: { id_usuario: idUsuario },
+                data: { estado_cuenta: 'activo' },
+            });
+
+            // 10. Log de auditoría
+            await tx.log_auditoria.create({
+                data: {
+                    id_autor: idUsuario,
+                    accion: 'CREACION_PERFIL_ADOPTANTE',
+                    entidad_afectada: 'Adoptante',
+                    id_registro_afectado: idUsuario,
+                    ip: ip,
+                }
+            });
+
+            return {
+                success: true,
+                data: {
+                    id_usuario: idUsuario,
+                    nombre_completo: nombre_completo.trim(),
+                    whatsapp: whatsapp.trim(),
+                    ciudad: ciudad.trim(),
+                    foto_url: fotoUrl,
+                    tags: tagIds || [],
+                    estado_cuenta: 'activo',
+                },
+            };
+        });
     } catch (err) {
-        await client.query('ROLLBACK');
         console.error('[adoptante.service] crearPerfil:', err.message);
         throw err;
-    } finally {
-        client.release();
     }
 };
 
@@ -149,27 +142,28 @@ const crearPerfilAdoptante = async ({ idUsuario, nombre_completo, whatsapp, ciud
  * HU-US-02: Obtiene el perfil de un adoptante incluyendo sus etiquetas.
  */
 const obtenerPerfilAdoptante = async (idUsuario) => {
-    const client = await pool.connect();
     try {
-        const perfilResult = await client.query(
-            'SELECT * FROM Adoptante WHERE id_usuario = $1',
-            [idUsuario]
-        );
+        const perfil = await prisma.adoptante.findUnique({
+            where: { id_usuario: idUsuario },
+            include: {
+                usuario: {
+                    select: { correo: true }
+                },
+                adoptante_tag: {
+                    include: {
+                        opcion_tag: {
+                            include: {
+                                tag: true
+                            }
+                        }
+                    }
+                }
+            }
+        });
 
-        if (perfilResult.rows.length === 0) {
+        if (!perfil) {
             return { success: false, status: 404, message: 'Perfil no encontrado.' };
         }
-
-        const perfil = perfilResult.rows[0];
-
-        const tagsResult = await client.query(
-            `SELECT ot.id_opcion, ot.valor, t.nombre_tag AS categoria
-             FROM Adoptante_Tag at_table
-             JOIN Opcion_Tag ot ON at_table.id_opcion = ot.id_opcion
-             JOIN Tag t ON ot.id_tag = t.id_tag
-             WHERE at_table.id_usuario = $1`,
-            [idUsuario]
-        );
 
         return {
             success: true,
@@ -179,174 +173,251 @@ const obtenerPerfilAdoptante = async (idUsuario) => {
                 whatsapp: perfil.whatsapp_adoptante,
                 ciudad: perfil.ciudad,
                 foto_url: perfil.foto_perfil,
-                etiquetas: tagsResult.rows,
+                etiquetas: perfil.adoptante_tag.map(at => ({
+                    id_opcion: at.id_opcion,
+                    valor: at.opcion_tag.valor,
+                    categoria: at.opcion_tag.tag.nombre_tag,
+                })),
             }
         };
     } catch (err) {
         console.error('[adoptante.service] obtenerPerfil:', err.message);
         throw err;
-    } finally {
-        client.release();
     }
 };
 
 /**
  * HU-US-02: Actualiza los datos básicos del perfil (nombre, whatsapp, ciudad, foto).
+ * Usa $queryRaw para SELECT ... FOR UPDATE dentro de la transacción.
  */
 const actualizarPerfilAdoptante = async ({ idUsuario, nombre_completo, whatsapp, ciudad, fotoBase64, ip }) => {
-    const client = await pool.connect();
     try {
-        await client.query('BEGIN');
+        return await prisma.$transaction(async (tx) => {
+            // FOR UPDATE: bloquear fila para evitar condiciones de carrera
+            const rows = await tx.$queryRaw`
+                SELECT * FROM adoptante WHERE id_usuario = ${idUsuario} FOR UPDATE
+            `;
 
-        const perfilAnteriorResult = await client.query(
-            'SELECT * FROM Adoptante WHERE id_usuario = $1 FOR UPDATE',
-            [idUsuario]
-        );
-
-        if (perfilAnteriorResult.rows.length === 0) {
-            await client.query('ROLLBACK');
-            return { success: false, status: 404, message: 'Perfil no encontrado.' };
-        }
-
-        const perfilAnterior = perfilAnteriorResult.rows[0];
-        let nuevaFotoUrl = perfilAnterior.foto_perfil;
-        let fotoViejaParaBorrar = null;
-
-        if (fotoBase64) {
-            const validacion = validateBase64Image(fotoBase64);
-            if (!validacion.valid) {
-                await client.query('ROLLBACK');
-                return { success: false, status: 400, message: validacion.message };
+            if (!rows || rows.length === 0) {
+                return { success: false, status: 404, message: 'Perfil no encontrado.' };
             }
-            nuevaFotoUrl = await uploadImage(fotoBase64, 'adopcion/adoptantes');
-            fotoViejaParaBorrar = perfilAnterior.foto_perfil;
-        }
 
-        const result = await client.query(
-            `UPDATE Adoptante 
-             SET nombre_completo = $1, whatsapp_adoptante = $2, ciudad = $3, foto_perfil = $4
-             WHERE id_usuario = $5 RETURNING *`,
-            [nombre_completo.trim(), whatsapp.trim(), ciudad.trim(), nuevaFotoUrl, idUsuario]
-        );
+            const perfilAnterior = rows[0];
+            let nuevaFotoUrl = perfilAnterior.foto_perfil;
+            let fotoViejaParaBorrar = null;
 
-        const perfilActualizado = result.rows[0];
+            if (fotoBase64) {
+                const validacion = validateBase64Image(fotoBase64);
+                if (!validacion.valid) {
+                    return { success: false, status: 400, message: validacion.message };
+                }
+                nuevaFotoUrl = await uploadImage(fotoBase64, 'adopcion/adoptantes');
+                fotoViejaParaBorrar = perfilAnterior.foto_perfil;
+            }
 
-        // Auditoría con valor anterior y nuevo
-        await client.query(
-            `INSERT INTO Log_Auditoria (id_autor, accion, entidad_afectada, id_registro_afectado, valor_anterior, valor_nuevo, ip, fecha)
-             VALUES ($1, 'ACTUALIZACION_PERFIL_ADOPTANTE', 'Adoptante', $1, $2, $3, $4, NOW())`,
-            [
-                idUsuario,
-                JSON.stringify(perfilAnterior),
-                JSON.stringify(perfilActualizado),
-                ip
-            ]
-        );
+            // COALESCE-like: solo actualizar campos no-null
+            const updateData = {};
+            if (nombre_completo !== undefined && nombre_completo !== null) {
+                updateData.nombre_completo = nombre_completo.trim();
+            }
+            if (whatsapp !== undefined && whatsapp !== null) {
+                updateData.whatsapp_adoptante = whatsapp.trim();
+            }
+            if (ciudad !== undefined && ciudad !== null) {
+                updateData.ciudad = ciudad.trim();
+            }
+            updateData.foto_perfil = nuevaFotoUrl;
+            updateData.updated_at = new Date();
 
-        await client.query('COMMIT');
+            const perfilActualizado = await tx.adoptante.update({
+                where: { id_usuario: idUsuario },
+                data: updateData,
+            });
 
-        // Borrar imagen vieja asincrónamente si se cambió
-        if (fotoViejaParaBorrar && fotoViejaParaBorrar !== nuevaFotoUrl) {
-            deleteImage(fotoViejaParaBorrar, 'adopcion/adoptantes').catch(e => console.error('Error deleting old image', e));
-        }
+            // Auditoría con valor anterior y nuevo
+            await tx.log_auditoria.create({
+                data: {
+                    id_autor: idUsuario,
+                    accion: 'ACTUALIZACION_PERFIL_ADOPTANTE',
+                    entidad_afectada: 'Adoptante',
+                    id_registro_afectado: idUsuario,
+                    valor_anterior: JSON.stringify({
+                        nombre_completo: perfilAnterior.nombre_completo,
+                        whatsapp_adoptante: perfilAnterior.whatsapp_adoptante,
+                        ciudad: perfilAnterior.ciudad,
+                        foto_perfil: perfilAnterior.foto_perfil,
+                    }),
+                    valor_nuevo: JSON.stringify({
+                        nombre_completo: perfilActualizado.nombre_completo,
+                        whatsapp_adoptante: perfilActualizado.whatsapp_adoptante,
+                        ciudad: perfilActualizado.ciudad,
+                        foto_perfil: perfilActualizado.foto_perfil,
+                    }),
+                    ip: ip,
+                }
+            });
 
-        return { success: true, data: {
-            id_usuario: perfilActualizado.id_usuario,
-            nombre_completo: perfilActualizado.nombre_completo,
-            whatsapp: perfilActualizado.whatsapp_adoptante,
-            ciudad: perfilActualizado.ciudad,
-            foto_url: perfilActualizado.foto_perfil,
-        }};
+            // Borrar imagen vieja asincrónamente si se cambió
+            if (fotoViejaParaBorrar && fotoViejaParaBorrar !== nuevaFotoUrl) {
+                deleteImage(fotoViejaParaBorrar, 'adopcion/adoptantes').catch(e =>
+                    console.error('[adoptante] Error deleting old image', e)
+                );
+            }
+
+            return {
+                success: true,
+                data: {
+                    id_usuario: perfilActualizado.id_usuario,
+                    nombre_completo: perfilActualizado.nombre_completo,
+                    whatsapp: perfilActualizado.whatsapp_adoptante,
+                    ciudad: perfilActualizado.ciudad,
+                    foto_url: perfilActualizado.foto_perfil,
+                }
+            };
+        });
     } catch (err) {
-        await client.query('ROLLBACK');
         console.error('[adoptante.service] actualizarPerfil:', err.message);
         throw err;
-    } finally {
-        client.release();
     }
 };
 
 /**
  * HU-US-02: Actualiza únicamente las etiquetas (opciones de tags).
+ * Usa $queryRaw para SELECT ... FOR UPDATE dentro de la transacción.
  */
 const actualizarEtiquetasAdoptante = async ({ idUsuario, tagIds, ip }) => {
-    const client = await pool.connect();
     try {
-        await client.query('BEGIN');
+        return await prisma.$transaction(async (tx) => {
+            // FOR UPDATE: bloquear fila del adoptante
+            const rows = await tx.$queryRaw`
+                SELECT id_usuario FROM adoptante WHERE id_usuario = ${idUsuario} FOR UPDATE
+            `;
 
-        const perfilResult = await client.query(
-            'SELECT id_usuario FROM Adoptante WHERE id_usuario = $1 FOR UPDATE',
-            [idUsuario]
-        );
-
-        if (perfilResult.rows.length === 0) {
-            await client.query('ROLLBACK');
-            return { success: false, status: 404, message: 'Perfil no encontrado.' };
-        }
-
-        // Validar tags obligatorios
-        const validacion = await validarTagsObligatorios(tagIds, client);
-        if (!validacion.valid) {
-            await client.query('ROLLBACK');
-            return {
-                success: false,
-                status: 400,
-                message: 'Debes seleccionar al menos una opción de cada categoría obligatoria.',
-                data: { tags_faltantes: validacion.tagsFaltantes },
-            };
-        }
-
-        // Validar que existen en el catálogo
-        if (tagIds.length > 0) {
-            const validTagsResult = await client.query(
-                'SELECT COUNT(*) AS total FROM Opcion_Tag WHERE id_opcion = ANY($1)',
-                [tagIds]
-            );
-            if (parseInt(validTagsResult.rows[0].total) !== tagIds.length) {
-                await client.query('ROLLBACK');
-                return { success: false, status: 400, message: 'Una o más opciones seleccionadas no existen.' };
+            if (!rows || rows.length === 0) {
+                return { success: false, status: 404, message: 'Perfil no encontrado.' };
             }
-        }
 
-        // Guardar tags anteriores para auditoría
-        const tagsViejos = await client.query(
-            'SELECT id_opcion FROM Adoptante_Tag WHERE id_usuario = $1',
-            [idUsuario]
-        );
-        const viejosIds = tagsViejos.rows.map(r => r.id_opcion);
+            // Validar tags obligatorios
+            const validacion = await validarTagsObligatorios(tagIds);
+            if (!validacion.valid) {
+                return {
+                    success: false,
+                    status: 400,
+                    message: 'Debes seleccionar al menos una opción de cada categoría obligatoria.',
+                    data: { tags_faltantes: validacion.tagsFaltantes },
+                };
+            }
 
-        // Borrar tags existentes y re-insertar
-        await client.query('DELETE FROM Adoptante_Tag WHERE id_usuario = $1', [idUsuario]);
+            // Validar que existen en el catálogo
+            if (tagIds && tagIds.length > 0) {
+                const count = await tx.opcion_tag.count({
+                    where: { id_opcion: { in: tagIds } }
+                });
+                if (count !== tagIds.length) {
+                    return { success: false, status: 400, message: 'Una o más opciones seleccionadas no existen.' };
+                }
+            }
 
-        if (tagIds.length > 0) {
-            const placeholders = tagIds.map((_, i) => `($1, $${i + 2})`).join(', ');
-            await client.query(
-                `INSERT INTO Adoptante_Tag (id_usuario, id_opcion) VALUES ${placeholders}`,
-                [idUsuario, ...tagIds]
-            );
-        }
+            // Guardar tags anteriores para auditoría
+            const tagsViejos = await tx.adoptante_tag.findMany({
+                where: { id_usuario: idUsuario },
+                select: { id_opcion: true }
+            });
+            const viejosIds = tagsViejos.map(r => r.id_opcion);
 
-        // Auditoría
-        await client.query(
-            `INSERT INTO Log_Auditoria (id_autor, accion, entidad_afectada, id_registro_afectado, valor_anterior, valor_nuevo, ip, fecha)
-             VALUES ($1, 'ACTUALIZACION_ETIQUETAS_ADOPTANTE', 'Adoptante_Tag', $1, $2, $3, $4, NOW())`,
-            [
-                idUsuario,
-                JSON.stringify({ tags: viejosIds }),
-                JSON.stringify({ tags: tagIds }),
-                ip
-            ]
-        );
+            // Borrar tags existentes y re-insertar
+            await tx.adoptante_tag.deleteMany({
+                where: { id_usuario: idUsuario }
+            });
 
-        await client.query('COMMIT');
-        return { success: true, data: { tags: tagIds } };
+            if (tagIds && tagIds.length > 0) {
+                await tx.adoptante_tag.createMany({
+                    data: tagIds.map(id_opcion => ({
+                        id_usuario: idUsuario,
+                        id_opcion,
+                    })),
+                });
+            }
+
+            // Recalcular embedding si cambiaron los tags
+            const nuevosTags = tagIds || [];
+            if (!arraysEqual([...viejosIds].sort(), [...nuevosTags].sort())) {
+                await calcularEmbedding(nuevosTags);
+            }
+
+            // Auditoría
+            await tx.log_auditoria.create({
+                data: {
+                    id_autor: idUsuario,
+                    accion: 'ACTUALIZACION_ETIQUETAS_ADOPTANTE',
+                    entidad_afectada: 'Adoptante_Tag',
+                    id_registro_afectado: idUsuario,
+                    valor_anterior: JSON.stringify({ tags: viejosIds }),
+                    valor_nuevo: JSON.stringify({ tags: nuevosTags }),
+                    ip: ip,
+                }
+            });
+
+            return { success: true, data: { tags: nuevosTags } };
+        });
     } catch (err) {
-        await client.query('ROLLBACK');
         console.error('[adoptante.service] actualizarEtiquetas:', err.message);
         throw err;
-    } finally {
-        client.release();
     }
 };
 
-module.exports = { crearPerfilAdoptante, obtenerPerfilAdoptante, actualizarPerfilAdoptante, actualizarEtiquetasAdoptante };
+/**
+ * Soft delete del perfil de adoptante.
+ * El middleware de Prisma filtra automáticamente deleted_at IS NULL.
+ */
+const eliminarPerfil = async (idUsuario) => {
+    try {
+        return await prisma.$transaction(async (tx) => {
+            const perfil = await tx.adoptante.findUnique({
+                where: { id_usuario: idUsuario }
+            });
+
+            if (!perfil) {
+                return { success: false, status: 404, message: 'Perfil no encontrado.' };
+            }
+
+            await tx.adoptante.update({
+                where: { id_usuario: idUsuario },
+                data: { deleted_at: new Date() }
+            });
+
+            await tx.log_auditoria.create({
+                data: {
+                    id_autor: idUsuario,
+                    accion: 'ELIMINACION_PERFIL_ADOPTANTE',
+                    entidad_afectada: 'Adoptante',
+                    id_registro_afectado: idUsuario,
+                }
+            });
+
+            return { success: true, message: 'Perfil eliminado exitosamente.' };
+        });
+    } catch (err) {
+        console.error('[adoptante.service] eliminarPerfil:', err.message);
+        throw err;
+    }
+};
+
+/**
+ * Helper para comparar arrays.
+ */
+const arraysEqual = (a = [], b = []) => {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+        if (a[i] !== b[i]) return false;
+    }
+    return true;
+};
+
+module.exports = {
+    crearPerfilAdoptante,
+    obtenerPerfilAdoptante,
+    actualizarPerfilAdoptante,
+    actualizarEtiquetasAdoptante,
+    eliminarPerfil,
+};

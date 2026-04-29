@@ -1,15 +1,17 @@
-jest.mock('../config/db', () => ({
-    connect: jest.fn(),
-    query: jest.fn()
-}));
+// ──────────────────────────────────────────────
+// Mock de Prisma (reemplaza pg Pool)
+// ──────────────────────────────────────────────
+jest.mock('../config/prisma', () => require('./__mocks__/prisma'));
 
+const prisma = require('../config/prisma');
+
+// Mock de bcrypt
 jest.mock('bcrypt', () => ({
     compare: jest.fn(),
     hash: jest.fn()
 }));
 
 const bcrypt = require('bcrypt');
-const pool = require('../config/db');
 const request = require('supertest');
 const express = require('express');
 const authRoutes = require('../routes/authRoutes');
@@ -19,15 +21,8 @@ app.use(express.json());
 app.use('/api/auth', authRoutes);
 
 describe('HU-AUTH-02 - Inicio de Sesión', () => {
-    let mockClient;
-
     beforeEach(() => {
         jest.clearAllMocks();
-        mockClient = {
-            query: jest.fn().mockResolvedValue({ rows: [] }),
-            release: jest.fn()
-        };
-        pool.connect.mockResolvedValue(mockClient);
     });
 
     describe('POST /api/auth/login', () => {
@@ -38,25 +33,23 @@ describe('HU-AUTH-02 - Inicio de Sesión', () => {
             estado_cuenta: 'activo',
             intentos_fallidos: 0,
             bloqueado_hasta: null,
-            nombre_rol: 'Adoptante'
+            rol: { nombre_rol: 'Adoptante' }
         };
 
         it('debe iniciar sesión exitosamente y retornar JWT', async () => {
             bcrypt.compare.mockResolvedValue(true);
 
-            // Secuencia: BEGIN → SELECT user → UPDATE reset attempts → INSERT log → COMMIT
-            mockClient.query
-                .mockResolvedValueOnce({}) // BEGIN
-                .mockResolvedValueOnce({ rows: [usuarioMock] }) // SELECT user
-                .mockResolvedValueOnce({}) // UPDATE reset attempts
-                .mockResolvedValueOnce({}) // INSERT log login exitoso
-                .mockResolvedValueOnce({}); // COMMIT
+            // ── Prisma calls dentro de $transaction ──
+            // 1. tx.usuario.findUnique → usuarioMock (with include.rol)
+            // 2. tx.log_auditoria.create → OK (login exitoso)
+            prisma.usuario.findUnique.mockResolvedValue(usuarioMock);
+            prisma.log_auditoria.create.mockResolvedValue({});
 
             const res = await request(app)
                 .post('/api/auth/login')
                 .send({
                     email: 'test@ejemplo.com',
-                    password: 'Test1234'
+                    password: 'Test1234!'
                 });
 
             expect(res.status).toBe(200);
@@ -70,12 +63,12 @@ describe('HU-AUTH-02 - Inicio de Sesión', () => {
         it('debe retornar 401 con credenciales inválidas', async () => {
             bcrypt.compare.mockResolvedValue(false);
 
-            mockClient.query
-                .mockResolvedValueOnce({}) // BEGIN
-                .mockResolvedValueOnce({ rows: [usuarioMock] }) // SELECT user
-                .mockResolvedValueOnce({}) // UPDATE intentos_fallidos
-                .mockResolvedValueOnce({}) // INSERT log login fallido
-                .mockResolvedValueOnce({}); // COMMIT
+            // 1. tx.usuario.findUnique → usuarioMock
+            // 2. tx.usuario.update → actualizar intentos_fallidos
+            // 3. tx.log_auditoria.create → LOGIN_FALLIDO
+            prisma.usuario.findUnique.mockResolvedValue(usuarioMock);
+            prisma.usuario.update.mockResolvedValue({});
+            prisma.log_auditoria.create.mockResolvedValue({});
 
             const res = await request(app)
                 .post('/api/auth/login')
@@ -98,16 +91,13 @@ describe('HU-AUTH-02 - Inicio de Sesión', () => {
                 intentos_fallidos: 5
             };
 
-            mockClient.query
-                .mockResolvedValueOnce({}) // BEGIN
-                .mockResolvedValueOnce({ rows: [usuarioBloqueado] }) // SELECT user
-                .mockResolvedValueOnce({}); // ROLLBACK
+            prisma.usuario.findUnique.mockResolvedValue(usuarioBloqueado);
 
             const res = await request(app)
                 .post('/api/auth/login')
                 .send({
                     email: 'bloqueado@ejemplo.com',
-                    password: 'Test1234'
+                    password: 'Test1234!'
                 });
 
             expect(res.status).toBe(403);
@@ -119,12 +109,13 @@ describe('HU-AUTH-02 - Inicio de Sesión', () => {
                 .post('/api/auth/login')
                 .send({
                     email: 'email-invalido',
-                    password: 'Test1234'
+                    password: 'Test1234!'
                 });
 
             expect(res.status).toBe(400);
             expect(res.body.errors.some(e => e.field === 'email')).toBe(true);
-            expect(pool.connect).not.toHaveBeenCalled();
+            // No debe llegar al servicio
+            expect(prisma.usuario.findUnique).not.toHaveBeenCalled();
         });
 
         it('debe bloquear la cuenta tras 5 intentos fallidos', async () => {
@@ -135,13 +126,13 @@ describe('HU-AUTH-02 - Inicio de Sesión', () => {
                 intentos_fallidos: 4
             };
 
-            mockClient.query
-                .mockResolvedValueOnce({}) // BEGIN
-                .mockResolvedValueOnce({ rows: [usuarioConIntentos] }) // SELECT user
-                .mockResolvedValueOnce({}) // UPDATE bloqueo
-                .mockResolvedValueOnce({}) // INSERT log bloqueo
-                .mockResolvedValueOnce({}) // INSERT log login fallido
-                .mockResolvedValueOnce({}); // COMMIT
+            // 1. tx.usuario.findUnique → usuario con 4 intentos fallidos
+            // 2. tx.usuario.update → bloquea (5to intento)
+            // 3. tx.log_auditoria.create → BLOQUEO_CUENTA
+            // 4. tx.log_auditoria.create → LOGIN_FALLIDO
+            prisma.usuario.findUnique.mockResolvedValue(usuarioConIntentos);
+            prisma.usuario.update.mockResolvedValue({});
+            prisma.log_auditoria.create.mockResolvedValue({});
 
             const res = await request(app)
                 .post('/api/auth/login')
@@ -152,10 +143,14 @@ describe('HU-AUTH-02 - Inicio de Sesión', () => {
 
             expect(res.status).toBe(401);
             expect(res.body.message).toContain('Correo o contraseña incorrectos');
-            // Verificar que se registró el bloqueo (BLOQUEO_CUENTA va en params, no en SQL)
-            expect(mockClient.query).toHaveBeenCalledWith(
-                expect.stringContaining('Log_Auditoria'),
-                expect.arrayContaining(['BLOQUEO_CUENTA'])
+
+            // Verificar que se registró el bloqueo (BLOQUEO_CUENTA)
+            expect(prisma.log_auditoria.create).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    data: expect.objectContaining({
+                        accion: 'BLOQUEO_CUENTA'
+                    })
+                })
             );
         });
     });

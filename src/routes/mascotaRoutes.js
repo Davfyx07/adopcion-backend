@@ -5,13 +5,17 @@ const {
     crearMascota,
     previsualizarMascota,
     actualizarMascotaController,
-    cambiarEstado
+    cambiarEstado,
+    feed,
+    match,
+    misMascotas
 } = require('../controllers/mascotaController');
 const {
     validateCreateMascota,
     validateUUIDParam,
     validateUpdateMascota,
-    validateCambioEstado
+    validateCambioEstado,
+    validateFeedQuery
 } = require('../middlewares/mascotaValidation');
 const authMiddleware = require('../middlewares/authMiddleware');
 const authorizeRole = require('../middlewares/authorizeRole');
@@ -171,6 +175,46 @@ router.post('/', authMiddleware, authorizeRole(['albergue']), validateCreateMasc
  *       500:
  *         description: Error interno al obtener la mascota
  */
+/**
+ * @swagger
+ * /api/mascotas/feed:
+ *   get:
+ *     summary: Feed de exploración de mascotas disponibles
+ *     tags: [Mascotas]
+ *     responses:
+ *       200:
+ *         description: Feed de mascotas
+ */
+router.get('/feed', validateFeedQuery, feed);
+
+/**
+ * @swagger
+ * /api/mascotas/match:
+ *   get:
+ *     summary: Matching de compatibilidad
+ *     tags: [Mascotas]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Lista ordenada por compatibilidad
+ */
+router.get('/match', authMiddleware, authorizeRole(['adoptante']), match);
+
+/**
+ * @swagger
+ * /api/mascotas/mis-mascotas:
+ *   get:
+ *     summary: Listar mascotas del albergue
+ *     tags: [Mascotas]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Lista de mascotas
+ */
+router.get('/mis-mascotas', authMiddleware, authorizeRole(['albergue']), validateFeedQuery, misMascotas);
+
 router.get('/:id', previsualizarMascota);
 
 /**

@@ -1,7 +1,9 @@
-jest.mock('../config/db', () => ({
-    connect: jest.fn(),
-    query: jest.fn()
-}));
+// ──────────────────────────────────────────────
+// Mock de Prisma (reemplaza pg Pool)
+// ──────────────────────────────────────────────
+jest.mock('../config/prisma', () => require('./__mocks__/prisma'));
+
+const prisma = require('../config/prisma');
 
 jest.mock('../services/storageService', () => ({
     uploadImage: jest.fn(),
@@ -13,6 +15,10 @@ jest.mock('../services/etiquetaService', () => ({
     validarTagsObligatorios: jest.fn()
 }));
 
+jest.mock('../services/embeddingService', () => ({
+    calcularEmbedding: jest.fn()
+}));
+
 jest.mock('../middlewares/authMiddleware', () => (req, res, next) => {
     req.user = { id: '550e8400-e29b-41d4-a716-446655440000', role: 'adoptante' };
     req.socket = { remoteAddress: '127.0.0.1' };
@@ -20,10 +26,10 @@ jest.mock('../middlewares/authMiddleware', () => (req, res, next) => {
 });
 jest.mock('../middlewares/authorizeRole', () => () => (req, res, next) => next());
 
-const pool = require('../config/db');
 const request = require('supertest');
 const express = require('express');
 const { validarTagsObligatorios } = require('../services/etiquetaService');
+const { calcularEmbedding } = require('../services/embeddingService');
 const { uploadImage, validateBase64Image } = require('../services/storageService');
 const adoptanteRoutes = require('../routes/adoptanteRoutes');
 
@@ -32,15 +38,8 @@ app.use(express.json());
 app.use('/api/adoptante', adoptanteRoutes);
 
 describe('HU-US-01 - Creación de Perfil Adoptante', () => {
-    let mockClient;
-
     beforeEach(() => {
         jest.clearAllMocks();
-        mockClient = {
-            query: jest.fn().mockResolvedValue({ rows: [] }),
-            release: jest.fn()
-        };
-        pool.connect.mockResolvedValue(mockClient);
     });
 
     describe('POST /api/adoptante/perfil', () => {
@@ -48,23 +47,29 @@ describe('HU-US-01 - Creación de Perfil Adoptante', () => {
 
         it('debe crear el perfil exitosamente con tags y foto', async () => {
             validarTagsObligatorios.mockResolvedValue({ valid: true });
+            calcularEmbedding.mockResolvedValue([1.0, 1.0, 0.0]);
             uploadImage.mockResolvedValue('https://cloudinary.com/adoptante.jpg');
             validateBase64Image.mockReturnValue({ valid: true });
 
-            // Secuencia: BEGIN → SELECT user → SELECT perfil → SELECT COUNT tags → uploadImage
-            // → INSERT Adoptante → INSERT Adoptante_Tag → UPDATE estado_cuenta → INSERT log → COMMIT
-            mockClient.query
-                .mockResolvedValueOnce({}) // BEGIN
-                .mockResolvedValueOnce({ // SELECT user (adoptante, perfil_incompleto)
-                    rows: [{ id_usuario: '550e8400-e29b-41d4-a716-446655440000', estado_cuenta: 'perfil_incompleto', nombre_rol: 'Adoptante' }]
-                })
-                .mockResolvedValueOnce({ rows: [] }) // SELECT perfil (no existe aún)
-                .mockResolvedValueOnce({ rows: [{ total: 2 }] }) // SELECT COUNT opciones existen
-                .mockResolvedValueOnce({}) // INSERT Adoptante
-                .mockResolvedValueOnce({}) // INSERT Adoptante_Tag
-                .mockResolvedValueOnce({}) // UPDATE Usuario estado_cuenta = 'activo'
-                .mockResolvedValueOnce({}) // INSERT Log_Auditoria
-                .mockResolvedValueOnce({}); // COMMIT
+            // ── Prisma calls dentro de $transaction ──
+            // 1. usuario.findUnique → user (adoptante, perfil_incompleto)
+            prisma.usuario.findUnique.mockResolvedValueOnce({
+                id_usuario: '550e8400-e29b-41d4-a716-446655440000',
+                estado_cuenta: 'perfil_incompleto',
+                rol: { nombre_rol: 'Adoptante' }
+            });
+            // 2. adoptante.findUnique → null (no existe perfil)
+            prisma.adoptante.findUnique.mockResolvedValueOnce(null);
+            // 3. opcion_tag.count → 2 (tags válidos)
+            prisma.opcion_tag.count.mockResolvedValueOnce(2);
+            // 4. adoptante.create → OK
+            prisma.adoptante.create.mockResolvedValueOnce({});
+            // 5. adoptante_tag.createMany → OK
+            prisma.adoptante_tag.createMany.mockResolvedValueOnce({});
+            // 6. usuario.update → activar cuenta
+            prisma.usuario.update.mockResolvedValueOnce({});
+            // 7. log_auditoria.create → OK
+            prisma.log_auditoria.create.mockResolvedValueOnce({});
 
             const res = await request(app)
                 .post('/api/adoptante/perfil')
@@ -80,15 +85,16 @@ describe('HU-US-01 - Creación de Perfil Adoptante', () => {
             expect(res.body.success).toBe(true);
             expect(res.body.message).toContain('Perfil de adoptante creado');
             expect(res.body.data.estado_cuenta).toBe('activo');
-            expect(mockClient.query).toHaveBeenCalledWith('COMMIT');
+            expect(prisma.adoptante.create).toHaveBeenCalled();
         });
 
         it('debe retornar 409 si el perfil ya fue creado', async () => {
-            mockClient.query
-                .mockResolvedValueOnce({}) // BEGIN
-                .mockResolvedValueOnce({ // SELECT user
-                    rows: [{ id_usuario: '550e8400-e29b-41d4-a716-446655440000', estado_cuenta: 'activo', nombre_rol: 'Adoptante' }]
-                });
+            // usuario.findUnique → user ya activo
+            prisma.usuario.findUnique.mockResolvedValueOnce({
+                id_usuario: '550e8400-e29b-41d4-a716-446655440000',
+                estado_cuenta: 'activo',
+                rol: { nombre_rol: 'Adoptante' }
+            });
 
             const res = await request(app)
                 .post('/api/adoptante/perfil')
@@ -101,16 +107,19 @@ describe('HU-US-01 - Creación de Perfil Adoptante', () => {
 
             expect(res.status).toBe(409);
             expect(res.body.message).toContain('perfil ya fue completado');
-            expect(mockClient.query).toHaveBeenCalledWith(expect.stringContaining('ROLLBACK'));
         });
 
         it('debe retornar 409 si ya existe un registro en tabla Adoptante', async () => {
-            mockClient.query
-                .mockResolvedValueOnce({}) // BEGIN
-                .mockResolvedValueOnce({ // SELECT user
-                    rows: [{ id_usuario: '550e8400-e29b-41d4-a716-446655440000', estado_cuenta: 'perfil_incompleto', nombre_rol: 'Adoptante' }]
-                })
-                .mockResolvedValueOnce({ rows: [{ id_usuario: '550e8400-e29b-41d4-a716-446655440000' }] }); // SELECT perfil (YA existe)
+            // 1. usuario.findUnique → user (perfil_incompleto)
+            prisma.usuario.findUnique.mockResolvedValueOnce({
+                id_usuario: '550e8400-e29b-41d4-a716-446655440000',
+                estado_cuenta: 'perfil_incompleto',
+                rol: { nombre_rol: 'Adoptante' }
+            });
+            // 2. adoptante.findUnique → YA existe perfil
+            prisma.adoptante.findUnique.mockResolvedValueOnce({
+                id_usuario: '550e8400-e29b-41d4-a716-446655440000'
+            });
 
             const res = await request(app)
                 .post('/api/adoptante/perfil')
@@ -123,15 +132,15 @@ describe('HU-US-01 - Creación de Perfil Adoptante', () => {
 
             expect(res.status).toBe(409);
             expect(res.body.message).toContain('Ya tienes un perfil');
-            expect(mockClient.query).toHaveBeenCalledWith(expect.stringContaining('ROLLBACK'));
         });
 
         it('debe retornar 403 si el usuario no tiene rol adoptante', async () => {
-            mockClient.query
-                .mockResolvedValueOnce({}) // BEGIN
-                .mockResolvedValueOnce({ // SELECT user con rol diferente
-                    rows: [{ id_usuario: '550e8400-e29b-41d4-a716-446655440000', estado_cuenta: 'perfil_incompleto', nombre_rol: 'Albergue' }]
-                });
+            // usuario.findUnique → user con rol diferente
+            prisma.usuario.findUnique.mockResolvedValueOnce({
+                id_usuario: '550e8400-e29b-41d4-a716-446655440000',
+                estado_cuenta: 'perfil_incompleto',
+                rol: { nombre_rol: 'Albergue' }
+            });
 
             const res = await request(app)
                 .post('/api/adoptante/perfil')

@@ -124,9 +124,70 @@ const cambiarEstado = async (req, res) => {
     }
 };
 
+const feed = async (req, res) => {
+    try {
+        const { tipo, tamaño, edad, ciudad, page, limit } = req.query;
+        const result = await mascotaService.listarFeed({ tipo, tamaño, edad, ciudad, page, limit });
+
+        return res.status(200).json({
+            success: true,
+            data: result.data,
+            meta: result.meta
+        });
+    } catch (error) {
+        console.error('[mascotaController] Error en feed:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Error interno del servidor al obtener el feed de mascotas.'
+        });
+    }
+};
+
+const match = async (req, res) => {
+    try {
+        const idAdoptante = req.user.id;
+        const result = await mascotaService.calcularCompatibilidad(idAdoptante);
+
+        return res.status(200).json({
+            success: true,
+            data: result
+        });
+    } catch (error) {
+        console.error('[mascotaController] Error en match:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Error interno del servidor al calcular compatibilidad.'
+        });
+    }
+};
+
+const misMascotas = async (req, res) => {
+    try {
+        const idAlbergue = req.user.id;
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const result = await mascotaService.listarMisMascotas(idAlbergue, { page, limit });
+
+        return res.status(200).json({
+            success: true,
+            data: result.data,
+            meta: result.meta
+        });
+    } catch (error) {
+        console.error('[mascotaController] Error en misMascotas:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Error interno del servidor al obtener tus mascotas.'
+        });
+    }
+};
+
 module.exports = {
     crearMascota,
     previsualizarMascota,
     actualizarMascotaController,
-    cambiarEstado
+    cambiarEstado,
+    feed,
+    match,
+    misMascotas
 };

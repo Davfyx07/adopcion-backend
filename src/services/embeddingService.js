@@ -1,4 +1,4 @@
-const pool = require('../config/db');
+const prisma = require('../config/prisma');
 
 /**
  * Calcula un vector de embedding binario basado en las opciones de tags seleccionadas.
@@ -9,20 +9,20 @@ const pool = require('../config/db');
  * NOTA: El esquema actual de BD no tiene columna 'embedding' en la tabla Adoptante.
  * Este servicio está listo para cuando se agregue dicha columna al esquema.
  *
- * @param {string[]} opcionIds - UUIDs de las opciones seleccionadas por el usuario
+ * @param {number[]} opcionIds - IDs de las opciones seleccionadas por el usuario
  * @returns {Promise<number[]>} Vector de embedding
  */
 const calcularEmbedding = async (opcionIds) => {
-    const result = await pool.query(
-        'SELECT id_opcion FROM Opcion_Tag ORDER BY id_opcion ASC'
-    );
+    const opciones = await prisma.opcion_tag.findMany({
+        orderBy: { id_opcion: 'asc' }
+    });
 
-    if (result.rows.length === 0) {
+    if (opciones.length === 0) {
         return [];
     }
 
     const selectedSet = new Set(opcionIds);
-    return result.rows.map(row => (selectedSet.has(row.id_opcion) ? 1.0 : 0.0));
+    return opciones.map(row => (selectedSet.has(row.id_opcion) ? 1.0 : 0.0));
 };
 
 module.exports = { calcularEmbedding };

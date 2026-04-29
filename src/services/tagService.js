@@ -1,221 +1,165 @@
-const pool = require('../config/db');
+const prisma = require('../config/prisma');
 
 const getTags = async (estado) => {
-    let query = 'SELECT * FROM tag';
-    const params = [];
-
+    const where = {};
     if (estado) {
-        params.push(estado);
-        query += ` WHERE estado = $${params.length}`;
+        where.estado = estado;
     }
-
-    const res = await pool.query(query, params);
-    return res.rows;
+    return prisma.tag.findMany({ where });
 };
 
 const createTag = async (data, userId, ip) => {
-    const client = await pool.connect();
+    // Validar nombre único (case-insensitive)
+    const exists = await prisma.tag.findFirst({
+        where: { nombre_tag: { equals: data.nombre_tag, mode: 'insensitive' } }
+    });
 
-    try {
-        await client.query('BEGIN');
+    if (exists) {
+        return { success: false, status: 409, message: 'Nombre de tag ya existe' };
+    }
 
-        // validar nombre único
-        const exists = await client.query(
-            `SELECT 1 FROM tag WHERE LOWER(nombre_tag) = $1`,
-            [data.nombre_tag.toLowerCase()]
-        );
+    return prisma.$transaction(async (tx) => {
+        const tag = await tx.tag.create({
+            data: {
+                nombre_tag: data.nombre_tag,
+                categoria: data.categoria || 'General',
+                peso_matching: data.peso_matching,
+                es_filtro_absoluto: data.es_filtro_absoluto || false,
+                estado: 'activo'
+            }
+        });
 
-        if (exists.rows.length > 0) {
-            return { success: false, status: 409, message: 'Nombre de tag ya existe' };
-        }
-
-        const result = await client.query(
-            `INSERT INTO tag (nombre_tag, categoria, peso_matching, es_filtro_absoluto, estado)
-             VALUES ($1, $2, $3, $4, 'activo')
-             RETURNING *`,
-            [
-                data.nombre_tag,
-                data.categoria || 'General',
-                data.peso_matching,
-                data.es_filtro_absoluto || false
-            ]
-        );
-
-        const tag = result.rows[0];
-
-        //  auditoría
-        await client.query(
-            `INSERT INTO log_auditoria 
-            (id_autor, accion, entidad_afectada, id_registro_afectado, valor_nuevo, ip)
-            VALUES ($1, 'CREATE_TAG', 'tag', $2, $3, $4)`,
-            [userId, tag.id_tag, tag, ip]
-        );
-
-        await client.query('COMMIT');
+        await tx.log_auditoria.create({
+            data: {
+                id_autor: userId,
+                accion: 'CREATE_TAG',
+                entidad_afectada: 'tag',
+                id_registro_afectado: tag.id_tag,
+                valor_nuevo: JSON.stringify(tag),
+                ip: ip
+            }
+        });
 
         return { success: true, data: tag };
-
-    } catch (err) {
-        await client.query('ROLLBACK');
-        throw err;
-    } finally {
-        client.release();
-    }
+    });
 };
 
 const updateTag = async (id, data, userId, ip) => {
-    const client = await pool.connect();
+    return prisma.$transaction(async (tx) => {
+        const current = await tx.tag.findUnique({ where: { id_tag: id } });
 
-    try {
-        await client.query('BEGIN');
-
-        const currentRes = await client.query(
-            'SELECT * FROM tag WHERE id_tag = $1',
-            [id]
-        );
-
-        if (currentRes.rows.length === 0) {
+        if (!current) {
             return { success: false, status: 404, message: 'Tag no encontrado' };
         }
 
-        const current = currentRes.rows[0];
-
-        //  evitar duplicados
+        // Evitar duplicados (case-insensitive, excluyendo el mismo id)
         if (data.nombre_tag) {
-            const exists = await client.query(
-                `SELECT 1 FROM tag WHERE LOWER(nombre_tag) = $1 AND id_tag <> $2`,
-                [data.nombre_tag.toLowerCase(), id]
-            );
+            const exists = await tx.tag.findFirst({
+                where: {
+                    nombre_tag: { equals: data.nombre_tag, mode: 'insensitive' },
+                    NOT: { id_tag: id }
+                }
+            });
 
-            if (exists.rows.length > 0) {
+            if (exists) {
                 return { success: false, status: 409, message: 'Nombre duplicado' };
             }
         }
 
-        const result = await client.query(
-            `UPDATE tag SET
-                nombre_tag = COALESCE($1, nombre_tag),
-                categoria = COALESCE($2, categoria),
-                peso_matching = COALESCE($3, peso_matching),
-                estado = COALESCE($4, estado),
-                es_filtro_absoluto = COALESCE($5, es_filtro_absoluto)
-             WHERE id_tag = $6
-             RETURNING *`,
-            [
-                data.nombre_tag ?? null,
-                data.categoria ?? null,
-                data.peso_matching ?? null,
-                data.estado ?? null,
-                data.es_filtro_absoluto ?? null,
-                id
-            ]
-        );
+        const updateData = {};
+        if (data.nombre_tag != null) updateData.nombre_tag = data.nombre_tag;
+        if (data.categoria != null) updateData.categoria = data.categoria;
+        if (data.peso_matching != null) updateData.peso_matching = data.peso_matching;
+        if (data.estado != null) updateData.estado = data.estado;
+        if (data.es_filtro_absoluto != null) updateData.es_filtro_absoluto = data.es_filtro_absoluto;
 
-        const updated = result.rows[0];
+        const updated = await tx.tag.update({
+            where: { id_tag: id },
+            data: updateData
+        });
 
-        //  recalcular embeddings (simulado async)
-        if (data.peso_matching && data.peso_matching !== current.peso_matching) {
+        // Recalcular embeddings (simulado async)
+        if (data.peso_matching != null && Number(data.peso_matching) !== Number(current.peso_matching)) {
             console.log('Recalcular embeddings...');
         }
 
-        await client.query(
-            `INSERT INTO log_auditoria 
-            (id_autor, accion, entidad_afectada, id_registro_afectado, valor_anterior, valor_nuevo, ip)
-            VALUES ($1, 'UPDATE_TAG', 'tag', $2, $3, $4, $5)`,
-            [userId, id, current, updated, ip]
-        );
-
-        await client.query('COMMIT');
+        await tx.log_auditoria.create({
+            data: {
+                id_autor: userId,
+                accion: 'UPDATE_TAG',
+                entidad_afectada: 'tag',
+                id_registro_afectado: id,
+                valor_anterior: JSON.stringify(current),
+                valor_nuevo: JSON.stringify(updated),
+                ip: ip
+            }
+        });
 
         return { success: true, data: updated };
-
-    } catch (err) {
-        await client.query('ROLLBACK');
-        throw err;
-    } finally {
-        client.release();
-    }
+    });
 };
 
 const deleteTag = async (id, userId, ip) => {
-    const client = await pool.connect();
+    return prisma.$transaction(async (tx) => {
+        const tag = await tx.tag.findUnique({ where: { id_tag: id } });
 
-    try {
-        await client.query('BEGIN');
-
-        const res = await client.query(
-            `SELECT * FROM tag WHERE id_tag = $1`,
-            [id]
-        );
-
-        if (res.rows.length === 0) {
+        if (!tag) {
             return { success: false, status: 404, message: 'Tag no encontrado' };
         }
 
-        const tag = res.rows[0];
-
-        //  ejemplo de obligatorio
+        // Ejemplo de obligatorio
         if (tag.nombre_tag.toLowerCase().includes('tipo')) {
             return { success: false, status: 400, message: 'Tag obligatorio no eliminable' };
         }
 
-        await client.query('UPDATE tag SET estado = $1 WHERE id_tag = $2', ['inactivo', id]);
+        await tx.tag.update({
+            where: { id_tag: id },
+            data: { estado: 'inactivo' }
+        });
 
-        await client.query(
-            `INSERT INTO log_auditoria 
-            (id_autor, accion, entidad_afectada, id_registro_afectado, valor_anterior, ip)
-            VALUES ($1, 'DELETE_TAG', 'tag', $2, $3, $4)`,
-            [userId, id, tag, ip]
-        );
-
-        await client.query('COMMIT');
+        await tx.log_auditoria.create({
+            data: {
+                id_autor: userId,
+                accion: 'DELETE_TAG',
+                entidad_afectada: 'tag',
+                id_registro_afectado: id,
+                valor_anterior: JSON.stringify(tag),
+                ip: ip
+            }
+        });
 
         return { success: true };
-
-    } catch (err) {
-        await client.query('ROLLBACK');
-        throw err;
-    } finally {
-        client.release();
-    }
+    });
 };
 
 const addOpciones = async (id, opciones, userId, ip) => {
-    const client = await pool.connect();
+    if (!Array.isArray(opciones) || opciones.length === 0) {
+        return { success: false, status: 400, message: 'Debes enviar al menos una opción.' };
+    }
 
-    try {
-        await client.query('BEGIN');
-
-        if (!Array.isArray(opciones) || opciones.length === 0) {
-            await client.query('ROLLBACK');
-            return { success: false, status: 400, message: 'Debes enviar al menos una opción.' };
-        }
-
+    return prisma.$transaction(async (tx) => {
         for (const op of opciones) {
-            await client.query(
-                `INSERT INTO opcion_tag (id_tag, valor)
-                 VALUES ($1, $2)`,
-                [id, op]
-            );
+            await tx.opcion_tag.create({
+                data: {
+                    id_tag: id,
+                    valor: op
+                }
+            });
         }
 
-        await client.query(
-            `INSERT INTO log_auditoria 
-            (id_autor, accion, entidad_afectada, id_registro_afectado, valor_nuevo, ip)
-            VALUES ($1, 'ADD_OPCIONES_TAG', 'tag', $2, $3, $4)`,
-            [userId, id, opciones, ip]
-        );
-
-        await client.query('COMMIT');
+        await tx.log_auditoria.create({
+            data: {
+                id_autor: userId,
+                accion: 'ADD_OPCIONES_TAG',
+                entidad_afectada: 'tag',
+                id_registro_afectado: id,
+                valor_nuevo: JSON.stringify(opciones),
+                ip: ip
+            }
+        });
 
         return { success: true };
-
-    } catch (err) {
-        await client.query('ROLLBACK');
-        throw err;
-    } finally {
-        client.release();
-    }
+    });
 };
 
 module.exports = {

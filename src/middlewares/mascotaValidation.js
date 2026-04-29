@@ -149,9 +149,32 @@ const validateCambioEstado = (req, res, next) => {
     return next();
 };
 
+const validateFeedQuery = (req, res, next) => {
+    const { page, limit, tipo, tamaño, edad, ciudad } = req.query;
+    const errors = [];
+
+    if (page !== undefined && (!/^[1-9]\d*$/.test(page))) {
+        errors.push({ field: 'page', message: 'page debe ser un entero positivo.' });
+    }
+
+    if (limit !== undefined && (!/^[1-9]\d*$/.test(limit) || parseInt(limit) > 50)) {
+        errors.push({ field: 'limit', message: 'limit debe ser un entero entre 1 y 50.' });
+    }
+
+    if (errors.length > 0) {
+        return res.status(400).json({ success: false, errors });
+    }
+
+    req.query.page = parseInt(page) || 1;
+    req.query.limit = parseInt(limit) || 10;
+
+    return next();
+};
+
 module.exports = {
     validateCreateMascota,
     validateUUIDParam,
     validateUpdateMascota,
-    validateCambioEstado
+    validateCambioEstado,
+    validateFeedQuery
 };

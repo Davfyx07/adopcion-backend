@@ -1,10 +1,9 @@
-// Mock de la base de datos
-jest.mock('../config/db', () => ({
-    connect: jest.fn(),
-    query: jest.fn()
-}));
+// ──────────────────────────────────────────────
+// Mock de Prisma (reemplaza pg Pool)
+// ──────────────────────────────────────────────
+jest.mock('../config/prisma', () => require('./__mocks__/prisma'));
 
-const pool = require('../config/db');
+const prisma = require('../config/prisma');
 const request = require('supertest');
 const express = require('express');
 const mascotaRoutes = require('../routes/mascotaRoutes');
@@ -26,30 +25,26 @@ app.use((req, res, next) => {
 app.use('/api/mascotas', mascotaRoutes);
 
 describe('Módulo de Mascota - Cambio de Estado (HU-MA-03)', () => {
-    let mockClient;
-
     beforeEach(() => {
         jest.clearAllMocks();
-        mockClient = {
-            query: jest.fn().mockResolvedValue({ rows: [] }),
-            release: jest.fn()
-        };
-        pool.connect.mockResolvedValue(mockClient);
     });
 
     describe('PATCH /api/mascotas/:id/estado', () => {
-        const idMascota = '123e4567-e89b-12d3-a456-426614174000'; // UUID válido para no fallar en otras capas si las hubiera
+        const idMascota = '123e4567-e89b-12d3-a456-426614174000';
 
         it('debe cambiar el estado exitosamente (disponible -> en_proceso)', async () => {
-            // Mock DB: BEGIN -> SELECT mascota -> UPDATE mascota -> INSERT auditoria -> COMMIT
-            mockClient.query
-                .mockResolvedValueOnce({}) // BEGIN
-                .mockResolvedValueOnce({ // SELECT mascota
-                    rows: [{ id_mascota: idMascota, id_albergue: 1, estado_adopcion: 'disponible', nombre: 'Firulais' }] 
-                })
-                .mockResolvedValueOnce({}) // UPDATE mascota
-                .mockResolvedValueOnce({}) // INSERT auditoria
-                .mockResolvedValueOnce({}); // COMMIT
+            // ── Prisma calls dentro de $transaction ──
+            // 1. $queryRaw FOR UPDATE → mascota
+            // 2. mascota.update → OK
+            // 3. log_auditoria.create → OK
+            prisma.$queryRaw.mockResolvedValueOnce([{
+                id_mascota: idMascota,
+                id_albergue: 1,
+                estado_adopcion: 'disponible',
+                nombre: 'Firulais'
+            }]);
+            prisma.mascota.update.mockResolvedValueOnce({});
+            prisma.log_auditoria.create.mockResolvedValueOnce({});
 
             const res = await request(app)
                 .patch(`/api/mascotas/${idMascota}/estado`)
@@ -57,7 +52,13 @@ describe('Módulo de Mascota - Cambio de Estado (HU-MA-03)', () => {
 
             expect(res.status).toBe(200);
             expect(res.body.message).toContain('Estado de la mascota actualizado');
-            expect(mockClient.query).toHaveBeenCalledWith(expect.stringContaining('UPDATE Mascota SET estado_adopcion = $1'), ['en_proceso', idMascota]);
+            expect(prisma.mascota.update).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    data: expect.objectContaining({
+                        estado_adopcion: 'en_proceso'
+                    })
+                })
+            );
         });
 
         it('debe requerir motivo si se cambia a oculto', async () => {
@@ -70,12 +71,13 @@ describe('Módulo de Mascota - Cambio de Estado (HU-MA-03)', () => {
         });
 
         it('debe fallar si la transición no está permitida', async () => {
-            // adoptado -> disponible no está permitido
-            mockClient.query
-                .mockResolvedValueOnce({}) // BEGIN
-                .mockResolvedValueOnce({ // SELECT mascota
-                    rows: [{ id_mascota: idMascota, id_albergue: 1, estado_adopcion: 'adoptado', nombre: 'Firulais' }] 
-                });
+            // $queryRaw devuelve mascota con estado 'adoptado'
+            prisma.$queryRaw.mockResolvedValueOnce([{
+                id_mascota: idMascota,
+                id_albergue: 1,
+                estado_adopcion: 'adoptado',
+                nombre: 'Firulais'
+            }]);
 
             const res = await request(app)
                 .patch(`/api/mascotas/${idMascota}/estado`)
@@ -83,23 +85,27 @@ describe('Módulo de Mascota - Cambio de Estado (HU-MA-03)', () => {
 
             expect(res.status).toBe(400);
             expect(res.body.message).toContain('Transición de estado no permitida');
-            expect(mockClient.query).toHaveBeenCalledWith(expect.stringContaining('ROLLBACK'));
         });
 
         it('debe consultar matches y enviar notificaciones al cambiar a adoptado', async () => {
-            // Mock DB: BEGIN -> SELECT mascota -> UPDATE mascota -> SELECT matches -> INSERT notificacion -> INSERT auditoria -> COMMIT
-            mockClient.query
-                .mockResolvedValueOnce({}) // BEGIN
-                .mockResolvedValueOnce({ // SELECT mascota
-                    rows: [{ id_mascota: idMascota, id_albergue: 1, estado_adopcion: 'en_proceso', nombre: 'Firulais' }] 
-                })
-                .mockResolvedValueOnce({}) // UPDATE mascota
-                .mockResolvedValueOnce({ // SELECT matches
-                    rows: [{ id_adoptante: 100 }]
-                })
-                .mockResolvedValueOnce({}) // INSERT notificacion
-                .mockResolvedValueOnce({}) // INSERT auditoria
-                .mockResolvedValueOnce({}); // COMMIT
+            // ── Prisma calls dentro de $transaction ──
+            // 1. $queryRaw FOR UPDATE → mascota
+            // 2. mascota.update → OK
+            // 3. match.findMany → [{ id_adoptante: 100 }]
+            // 4. notificacion.create → OK (por cada match)
+            // 5. log_auditoria.create → OK
+            prisma.$queryRaw.mockResolvedValueOnce([{
+                id_mascota: idMascota,
+                id_albergue: 1,
+                estado_adopcion: 'en_proceso',
+                nombre: 'Firulais'
+            }]);
+            prisma.mascota.update.mockResolvedValueOnce({});
+            prisma.match.findMany.mockResolvedValueOnce([
+                { id_adoptante: 100 }
+            ]);
+            prisma.notificacion.create.mockResolvedValue({});
+            prisma.log_auditoria.create.mockResolvedValueOnce({});
 
             const res = await request(app)
                 .patch(`/api/mascotas/${idMascota}/estado`)
@@ -107,16 +113,22 @@ describe('Módulo de Mascota - Cambio de Estado (HU-MA-03)', () => {
 
             expect(res.status).toBe(200);
             expect(res.body.message).toContain('Estado de la mascota actualizado');
-            expect(mockClient.query).toHaveBeenCalledWith(expect.stringContaining('SELECT DISTINCT id_adoptante FROM Match'), [idMascota]);
-            expect(mockClient.query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO Notificacion'), expect.any(Array));
+            expect(prisma.match.findMany).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    where: expect.objectContaining({ id_mascota: idMascota })
+                })
+            );
+            expect(prisma.notificacion.create).toHaveBeenCalled();
         });
 
         it('debe retornar 404 si el albergue no es el dueño', async () => {
-            mockClient.query
-                .mockResolvedValueOnce({}) // BEGIN
-                .mockResolvedValueOnce({ // SELECT mascota con id_albergue diferente
-                    rows: [{ id_mascota: idMascota, id_albergue: 999, estado_adopcion: 'disponible', nombre: 'Firulais' }] 
-                });
+            // $queryRaw devuelve mascota con id_albergue diferente a req.user.id (1)
+            prisma.$queryRaw.mockResolvedValueOnce([{
+                id_mascota: idMascota,
+                id_albergue: 999,
+                estado_adopcion: 'disponible',
+                nombre: 'Firulais'
+            }]);
 
             const res = await request(app)
                 .patch(`/api/mascotas/${idMascota}/estado`)
