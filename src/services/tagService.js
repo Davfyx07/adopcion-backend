@@ -6,7 +6,7 @@ const getTags = async (estado) => {
 
     if (estado) {
         params.push(estado);
-        query += ` AND estado = $${params.length}`;
+        query += ` WHERE estado = $${params.length}`;
     }
 
     const res = await pool.query(query, params);

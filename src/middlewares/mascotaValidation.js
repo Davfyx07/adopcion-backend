@@ -128,7 +128,7 @@ const validateUpdateMascota = (req, res, next) => {
 const validateCambioEstado = (req, res, next) => {
     const { estado, motivo } = req.body;
     const errors = [];
-    const estadosPermitidos = ['disponible', 'en_proceso', 'adoptado', 'oculto', 'inactivo', 'archivado'];
+    const estadosPermitidos = ['disponible', 'en_proceso', 'adoptado', 'oculto', 'inactivo', 'archivado', 'pausado'];
 
     if (!estado || !estadosPermitidos.includes(estado)) {
         errors.push({
