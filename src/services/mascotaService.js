@@ -66,6 +66,11 @@ const computeUpdatedFields = ({ mascotaAntes, data, fotosAntes, fotosDespues, ta
 
 const crearMascota = async (idAlbergue, authUserId, { nombre, descripcion, fotos, tagsIds }, clientIp) => {
     try {
+        // Validación: al menos una foto
+        if (!fotos || !Array.isArray(fotos) || fotos.length === 0) {
+            return { success: false, status: 400, message: 'La mascota debe tener al menos una foto.' };
+        }
+
         return await prisma.$transaction(async (tx) => {
             // 1. Insertar mascota
             const mascota = await tx.mascota.create({
