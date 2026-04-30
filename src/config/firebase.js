@@ -1,4 +1,5 @@
 const admin = require('firebase-admin');
+const path = require('path');
 
 let firebaseApp = null;
 
@@ -8,7 +9,9 @@ function initializeFirebase() {
   try {
     // Opción 1: Service account JSON file path
     if (process.env.FIREBASE_SERVICE_ACCOUNT_PATH) {
-      const serviceAccount = require(process.env.FIREBASE_SERVICE_ACCOUNT_PATH);
+      // Resolver path relativo al root del proyecto (3 niveles arriba de src/config/)
+      const serviceAccountPath = path.resolve(__dirname, '../../', process.env.FIREBASE_SERVICE_ACCOUNT_PATH);
+      const serviceAccount = require(serviceAccountPath);
       firebaseApp = admin.initializeApp({
         credential: admin.credential.cert(serviceAccount),
         storageBucket: process.env.FIREBASE_STORAGE_BUCKET || `${serviceAccount.project_id}.appspot.com`,
