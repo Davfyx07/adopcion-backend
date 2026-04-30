@@ -13,7 +13,7 @@ const prisma = require('../config/prisma');
  * @returns {Promise<number[]>} Vector de embedding
  */
 const calcularEmbedding = async (opcionIds) => {
-    const opciones = await prisma.opcion_tag.findMany({
+    const opciones = await prisma.opcionTag.findMany({
         orderBy: { id_opcion: 'asc' }
     });
 

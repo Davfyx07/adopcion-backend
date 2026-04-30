@@ -60,16 +60,16 @@ describe('HU-US-01 - Creación de Perfil Adoptante', () => {
             });
             // 2. adoptante.findUnique → null (no existe perfil)
             prisma.adoptante.findUnique.mockResolvedValueOnce(null);
-            // 3. opcion_tag.count → 2 (tags válidos)
-            prisma.opcion_tag.count.mockResolvedValueOnce(2);
+            // 3. opcionTag.count → 2 (tags válidos)
+            prisma.opcionTag.count.mockResolvedValueOnce(2);
             // 4. adoptante.create → OK
             prisma.adoptante.create.mockResolvedValueOnce({});
-            // 5. adoptante_tag.createMany → OK
-            prisma.adoptante_tag.createMany.mockResolvedValueOnce({});
+            // 5. adoptanteTag.createMany → OK
+            prisma.adoptanteTag.createMany.mockResolvedValueOnce({});
             // 6. usuario.update → activar cuenta
             prisma.usuario.update.mockResolvedValueOnce({});
-            // 7. log_auditoria.create → OK
-            prisma.log_auditoria.create.mockResolvedValueOnce({});
+            // 7. logAuditoria.create → OK
+            prisma.logAuditoria.create.mockResolvedValueOnce({});
 
             const res = await request(app)
                 .post('/api/adoptante/perfil')

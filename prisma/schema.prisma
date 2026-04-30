@@ -1,55 +1,10 @@
 generator client {
-  provider = "prisma-client-js"
+  provider   = "prisma-client-js"
+  engineType = "library"
 }
 
 datasource db {
   provider = "postgresql"
-}
-
-// ──────────────────────────────────────────────
-// ENUMS (descubiertos por db pull desde CHECK constraints)
-// ──────────────────────────────────────────────
-
-enum EstadoUsuario {
-  activo
-  inactivo
-  bloqueado
-  suspendido
-  eliminado
-  perfil_incompleto
-  bloqueado_temporal @map("bloqueado temporal")
-}
-
-enum EstadoMascota {
-  disponible
-  en_proceso
-  adoptado
-  inactivo
-  archivado
-  oculto_moderacion
-  pausado
-}
-
-enum EstadoMatch {
-  pendiente
-  aceptado
-  rechazado
-  contactado
-  archivado
-  adoptado_por_otro
-}
-
-enum EstadoAdopcion {
-  en_proceso
-  completada
-  cancelada
-}
-
-enum EstadoNotificacion {
-  pendiente
-  enviada
-  leida
-  fallida
 }
 
 // ──────────────────────────────────────────────
@@ -61,7 +16,7 @@ model Usuario {
   correo            String                  @unique @db.VarChar(150)
   password_hash     String
   id_rol            Int
-  estado_cuenta     EstadoUsuario           @default(perfil_incompleto)
+  estado_cuenta     String           @default("perfil_incompleto")
   fecha_registro    DateTime?               @default(now()) @db.Timestamptz(6)
   ip_registro       String?                 @db.VarChar(45)
   intentos_fallidos Int?                    @default(0)
@@ -134,7 +89,7 @@ model Mascota {
   id_albergue        Int
   nombre             String?        @db.VarChar(100)
   descripcion        String?
-  estado_adopcion    EstadoMascota  @default(disponible)
+  estado_adopcion    String  @default("disponible")
   fecha_publicacion  DateTime?      @default(now()) @db.Timestamptz(6)
   embedding          String?        // text — no pgvector instalado en esta BD
   deleted_at         DateTime?      @db.Timestamptz(6)
@@ -222,7 +177,7 @@ model Match {
   id_adoptante Int
   id_mascota   Int
   puntaje      Decimal?    @db.Decimal(5, 2)
-  estado       EstadoMatch @default(pendiente)
+  estado       String @default("pendiente")
   fecha        DateTime?   @default(now()) @db.Timestamptz(6)
 
   adoptante Adoptante @relation(fields: [id_adoptante], references: [id_usuario], onDelete: Cascade, onUpdate: NoAction)
@@ -240,7 +195,7 @@ model Adopcion {
   id_mascota                Int
   id_adoptante              Int
   fecha                     DateTime?      @default(now()) @db.Timestamptz(6)
-  estado                    EstadoAdopcion @default(en_proceso)
+  estado                    String @default("en_proceso")
   observaciones             String?
   fecha_match               DateTime?     @db.Timestamptz(6)
   fecha_contacto            DateTime?     @db.Timestamptz(6)
@@ -272,7 +227,7 @@ model Notificacion {
   id_usuario         Int
   tipo_notificacion  String?            @db.VarChar(50)
   mensaje            String?
-  estado             EstadoNotificacion @default(pendiente)
+  estado             String @default("pendiente")
   fecha_creacion     DateTime?          @default(now()) @db.Timestamptz(6)
   fecha_lectura      DateTime?          @db.Timestamptz(6)
   recurso_tipo       String?            @db.VarChar(50)

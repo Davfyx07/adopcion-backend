@@ -1,6 +1,6 @@
 const { validateBase64Image } = require('../services/storageService');
 
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const INT_REGEX = /^\d+$/;
 
 const validateCreateMascota = (req, res, next) => {
     const { nombre, fotos, tagsIds } = req.body;
@@ -34,9 +34,9 @@ const validateCreateMascota = (req, res, next) => {
     } else if (tagsIds.length === 0) {
         errors.push({ field: 'tagsIds', message: 'Debe especificar al menos un tag válido.' });
     } else {
-        const invalidTags = tagsIds.filter((t) => !UUID_REGEX.test(String(t)));
+        const invalidTags = tagsIds.filter((t) => !INT_REGEX.test(String(t)));
         if (invalidTags.length > 0) {
-            errors.push({ field: 'tagsIds', message: 'Todos los tagsIds deben ser UUIDs válidos.' });
+            errors.push({ field: 'tagsIds', message: 'Todos los tagsIds deben ser IDs numéricos válidos.' });
         }
     }
 
@@ -49,8 +49,8 @@ const validateCreateMascota = (req, res, next) => {
 
 const validateUUIDParam = (req, res, next) => {
     const { id } = req.params;
-    if (!id || !UUID_REGEX.test(id)) {
-        return res.status(400).json({ success: false, message: 'ID de mascota inválido (debe ser UUID).' });
+    if (!id || !INT_REGEX.test(id)) {
+        return res.status(400).json({ success: false, message: 'ID de mascota inválido (debe ser numérico).' });
     }
     return next();
 };
@@ -87,7 +87,7 @@ const validateUpdateMascota = (req, res, next) => {
                 if (!f.base64 && !f.id_foto) {
                     errors.push({ field: `fotos[${index}]`, message: 'Cada foto debe tener id_foto (existente) o base64 (nueva).' });
                 }
-                if (f.id_foto && !UUID_REGEX.test(String(f.id_foto))) {
+                if (f.id_foto && !INT_REGEX.test(String(f.id_foto))) {
                     errors.push({ field: `fotos[${index}].id_foto`, message: 'id_foto debe ser UUID válido.' });
                 }
                 if (f.base64) {
@@ -101,7 +101,7 @@ const validateUpdateMascota = (req, res, next) => {
     if (fotos_eliminadas && !Array.isArray(fotos_eliminadas)) {
         errors.push({ field: 'fotos_eliminadas', message: 'fotos_eliminadas debe ser un arreglo de IDs.' });
     } else if (Array.isArray(fotos_eliminadas)) {
-        const invalidFotos = fotos_eliminadas.filter((id) => !UUID_REGEX.test(String(id)));
+        const invalidFotos = fotos_eliminadas.filter((id) => !INT_REGEX.test(String(id)));
         if (invalidFotos.length > 0) {
             errors.push({ field: 'fotos_eliminadas', message: 'Todos los IDs en fotos_eliminadas deben ser UUID válidos.' });
         }
@@ -109,11 +109,11 @@ const validateUpdateMascota = (req, res, next) => {
 
     if (tagsIds) {
         if (!Array.isArray(tagsIds)) {
-            errors.push({ field: 'tagsIds', message: 'tagsIds debe ser un arreglo de UUIDs.' });
+            errors.push({ field: 'tagsIds', message: 'tagsIds debe ser un arreglo de IDs numéricos.' });
         } else {
-            const invalidTags = tagsIds.filter((t) => !UUID_REGEX.test(String(t)));
+            const invalidTags = tagsIds.filter((t) => !INT_REGEX.test(String(t)));
             if (invalidTags.length > 0) {
-                errors.push({ field: 'tagsIds', message: 'Todos los tagsIds deben ser UUIDs válidos.' });
+                errors.push({ field: 'tagsIds', message: 'Todos los tagsIds deben ser IDs numéricos válidos.' });
             }
         }
     }

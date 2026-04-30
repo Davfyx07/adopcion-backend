@@ -2,7 +2,7 @@ const prisma = require('../config/prisma');
 
 /**
  * Obtiene el catálogo completo de opciones de tags disponibles.
- * Hace JOIN entre Opcion_Tag y Tag para obtener la categoría y si es obligatorio.
+ * Hace JOIN entre opcionTag y Tag para obtener la categoría y si es obligatorio.
  *
  * @returns {Promise<Array>} Lista de opciones con id, valor, categoria y si el tag padre es obligatorio
  */
@@ -49,7 +49,7 @@ const validarTagsObligatorios = async (opcionIds, _client) => {
     if (tagsObligatorios.length === 0) return { valid: true };
 
     // Obtener a qué Tags pertenecen las opciones seleccionadas
-    const opciones = await prisma.opcion_tag.findMany({
+    const opciones = await prisma.opcionTag.findMany({
         where: {
             id_opcion: { in: opcionIds },
             tag: { es_filtro_absoluto: true }

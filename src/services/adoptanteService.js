@@ -9,7 +9,7 @@ const { calcularEmbedding } = require('./embeddingService');
  * Adaptado al esquema real de BD:
  *   - Tabla: Adoptante (PK compartida con Usuario via id_usuario)
  *   - Columnas: nombre_completo, foto_perfil, whatsapp_adoptante, ciudad
- *   - Tags: Adoptante_Tag (id_usuario, id_opcion) → referencia Opcion_Tag
+ *   - Tags: adoptanteTag (id_usuario, id_opcion) → referencia opcionTag
  */
 const crearPerfilAdoptante = async ({ idUsuario, nombre_completo, whatsapp, ciudad, tagIds, fotoBase64, ip }) => {
     try {
@@ -58,8 +58,8 @@ const crearPerfilAdoptante = async ({ idUsuario, nombre_completo, whatsapp, ciud
                     };
                 }
 
-                // 4. Validar que los IDs de opciones existen en Opcion_Tag
-                const count = await tx.opcion_tag.count({
+                // 4. Validar que los IDs de opciones existen en opcionTag
+                const count = await tx.opcionTag.count({
                     where: { id_opcion: { in: tagIds } }
                 });
                 if (count !== tagIds.length) {
@@ -92,9 +92,9 @@ const crearPerfilAdoptante = async ({ idUsuario, nombre_completo, whatsapp, ciud
                 }
             });
 
-            // 8. Guardar tags en Adoptante_Tag
+            // 8. Guardar tags en adoptanteTag
             if (tagIds && tagIds.length > 0) {
-                await tx.adoptante_tag.createMany({
+                await tx.adoptanteTag.createMany({
                     data: tagIds.map(id_opcion => ({
                         id_usuario: idUsuario,
                         id_opcion,
@@ -109,7 +109,7 @@ const crearPerfilAdoptante = async ({ idUsuario, nombre_completo, whatsapp, ciud
             });
 
             // 10. Log de auditoría
-            await tx.log_auditoria.create({
+            await tx.logAuditoria.create({
                 data: {
                     id_autor: idUsuario,
                     accion: 'CREACION_PERFIL_ADOPTANTE',
@@ -149,9 +149,9 @@ const obtenerPerfilAdoptante = async (idUsuario) => {
                 usuario: {
                     select: { correo: true }
                 },
-                adoptante_tag: {
+                adoptanteTag: {
                     include: {
-                        opcion_tag: {
+                        opcionTag: {
                             include: {
                                 tag: true
                             }
@@ -173,10 +173,10 @@ const obtenerPerfilAdoptante = async (idUsuario) => {
                 whatsapp: perfil.whatsapp_adoptante,
                 ciudad: perfil.ciudad,
                 foto_url: perfil.foto_perfil,
-                etiquetas: perfil.adoptante_tag.map(at => ({
+                etiquetas: perfil.adoptanteTag.map(at => ({
                     id_opcion: at.id_opcion,
-                    valor: at.opcion_tag.valor,
-                    categoria: at.opcion_tag.tag.nombre_tag,
+                    valor: at.opcionTag.valor,
+                    categoria: at.opcionTag.tag.nombre_tag,
                 })),
             }
         };
@@ -235,7 +235,7 @@ const actualizarPerfilAdoptante = async ({ idUsuario, nombre_completo, whatsapp,
             });
 
             // Auditoría con valor anterior y nuevo
-            await tx.log_auditoria.create({
+            await tx.logAuditoria.create({
                 data: {
                     id_autor: idUsuario,
                     accion: 'ACTUALIZACION_PERFIL_ADOPTANTE',
@@ -310,7 +310,7 @@ const actualizarEtiquetasAdoptante = async ({ idUsuario, tagIds, ip }) => {
 
             // Validar que existen en el catálogo
             if (tagIds && tagIds.length > 0) {
-                const count = await tx.opcion_tag.count({
+                const count = await tx.opcionTag.count({
                     where: { id_opcion: { in: tagIds } }
                 });
                 if (count !== tagIds.length) {
@@ -319,19 +319,19 @@ const actualizarEtiquetasAdoptante = async ({ idUsuario, tagIds, ip }) => {
             }
 
             // Guardar tags anteriores para auditoría
-            const tagsViejos = await tx.adoptante_tag.findMany({
+            const tagsViejos = await tx.adoptanteTag.findMany({
                 where: { id_usuario: idUsuario },
                 select: { id_opcion: true }
             });
             const viejosIds = tagsViejos.map(r => r.id_opcion);
 
             // Borrar tags existentes y re-insertar
-            await tx.adoptante_tag.deleteMany({
+            await tx.adoptanteTag.deleteMany({
                 where: { id_usuario: idUsuario }
             });
 
             if (tagIds && tagIds.length > 0) {
-                await tx.adoptante_tag.createMany({
+                await tx.adoptanteTag.createMany({
                     data: tagIds.map(id_opcion => ({
                         id_usuario: idUsuario,
                         id_opcion,
@@ -346,11 +346,11 @@ const actualizarEtiquetasAdoptante = async ({ idUsuario, tagIds, ip }) => {
             }
 
             // Auditoría
-            await tx.log_auditoria.create({
+            await tx.logAuditoria.create({
                 data: {
                     id_autor: idUsuario,
                     accion: 'ACTUALIZACION_ETIQUETAS_ADOPTANTE',
-                    entidad_afectada: 'Adoptante_Tag',
+                    entidad_afectada: 'adoptanteTag',
                     id_registro_afectado: idUsuario,
                     valor_anterior: JSON.stringify({ tags: viejosIds }),
                     valor_nuevo: JSON.stringify({ tags: nuevosTags }),
@@ -386,7 +386,7 @@ const eliminarPerfil = async (idUsuario) => {
                 data: { deleted_at: new Date() }
             });
 
-            await tx.log_auditoria.create({
+            await tx.logAuditoria.create({
                 data: {
                     id_autor: idUsuario,
                     accion: 'ELIMINACION_PERFIL_ADOPTANTE',

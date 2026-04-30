@@ -29,7 +29,7 @@ const createTag = async (data, userId, ip) => {
             }
         });
 
-        await tx.log_auditoria.create({
+        await tx.logAuditoria.create({
             data: {
                 id_autor: userId,
                 accion: 'CREATE_TAG',
@@ -83,7 +83,7 @@ const updateTag = async (id, data, userId, ip) => {
             console.log('Recalcular embeddings...');
         }
 
-        await tx.log_auditoria.create({
+        await tx.logAuditoria.create({
             data: {
                 id_autor: userId,
                 accion: 'UPDATE_TAG',
@@ -117,7 +117,7 @@ const deleteTag = async (id, userId, ip) => {
             data: { estado: 'inactivo' }
         });
 
-        await tx.log_auditoria.create({
+        await tx.logAuditoria.create({
             data: {
                 id_autor: userId,
                 accion: 'DELETE_TAG',
@@ -139,7 +139,7 @@ const addOpciones = async (id, opciones, userId, ip) => {
 
     return prisma.$transaction(async (tx) => {
         for (const op of opciones) {
-            await tx.opcion_tag.create({
+            await tx.opcionTag.create({
                 data: {
                     id_tag: id,
                     valor: op
@@ -147,7 +147,7 @@ const addOpciones = async (id, opciones, userId, ip) => {
             });
         }
 
-        await tx.log_auditoria.create({
+        await tx.logAuditoria.create({
             data: {
                 id_autor: userId,
                 accion: 'ADD_OPCIONES_TAG',

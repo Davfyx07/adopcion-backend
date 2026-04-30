@@ -62,12 +62,12 @@ describe('HU-AL-01 - Creación de Perfil Albergue', () => {
             prisma.albergue.findUnique.mockResolvedValue(null);
             // 4. albergue.create → OK
             prisma.albergue.create.mockResolvedValueOnce({});
-            // 5. historial_whatsapp_albergue.create → OK
-            prisma.historial_whatsapp_albergue.create.mockResolvedValueOnce({});
+            // 5. historialWhatsappAlbergue.create → OK
+            prisma.historialWhatsappAlbergue.create.mockResolvedValueOnce({});
             // 6. usuario.update → activar cuenta
             prisma.usuario.update.mockResolvedValueOnce({});
-            // 7. log_auditoria.create → OK
-            prisma.log_auditoria.create.mockResolvedValueOnce({});
+            // 7. logAuditoria.create → OK
+            prisma.logAuditoria.create.mockResolvedValueOnce({});
 
             const res = await request(app)
                 .post('/api/albergue/perfil')
@@ -151,12 +151,12 @@ describe('HU-AL-01 - Creación de Perfil Albergue', () => {
             prisma.albergue.findUnique.mockResolvedValue(null);
             // 4. albergue.create → OK
             prisma.albergue.create.mockResolvedValueOnce({});
-            // 5. historial_whatsapp_albergue.create → OK
-            prisma.historial_whatsapp_albergue.create.mockResolvedValueOnce({});
+            // 5. historialWhatsappAlbergue.create → OK
+            prisma.historialWhatsappAlbergue.create.mockResolvedValueOnce({});
             // 6. usuario.update → activar cuenta
             prisma.usuario.update.mockResolvedValueOnce({});
-            // 7. log_auditoria.create → OK
-            prisma.log_auditoria.create.mockResolvedValueOnce({});
+            // 7. logAuditoria.create → OK
+            prisma.logAuditoria.create.mockResolvedValueOnce({});
 
             const res = await request(app)
                 .post('/api/albergue/perfil')

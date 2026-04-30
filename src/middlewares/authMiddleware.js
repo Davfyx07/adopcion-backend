@@ -8,7 +8,7 @@ const isTokenBlacklisted = async (token) => {
         .update(token)
         .digest('hex');
 
-    const result = await prisma.blacklist_token.findFirst({
+    const result = await prisma.blacklistToken.findFirst({
         where: {
             token_hash: tokenHash,
             fecha_expiracion: { gt: new Date() }

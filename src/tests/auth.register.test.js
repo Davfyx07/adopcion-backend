@@ -23,16 +23,16 @@ describe('HU-AUTH-01 - Registro de Usuario', () => {
             // ── Mock de Prisma calls dentro de $transaction ──
             // 1. tx.rol.findFirst → { id_rol: 2 }
             // 2. tx.usuario.create → { id_usuario, correo, estado_cuenta }
-            // 3. tx.termino_aceptado.create → OK
-            // 4. tx.log_auditoria.create → OK
+            // 3. tx.terminoAceptado.create → OK
+            // 4. tx.logAuditoria.create → OK
             prisma.rol.findFirst.mockResolvedValue({ id_rol: 2 });
             prisma.usuario.create.mockResolvedValue({
                 id_usuario: '550e8400-e29b-41d4-a716-446655440000',
                 correo: 'test@ejemplo.com',
                 estado_cuenta: 'perfil_incompleto',
             });
-            prisma.termino_aceptado.create.mockResolvedValue({});
-            prisma.log_auditoria.create.mockResolvedValue({});
+            prisma.terminoAceptado.create.mockResolvedValue({});
+            prisma.logAuditoria.create.mockResolvedValue({});
 
             const res = await request(app)
                 .post('/api/auth/register')
@@ -53,8 +53,8 @@ describe('HU-AUTH-01 - Registro de Usuario', () => {
             // Verificar que se ejecutaron las operaciones de Prisma
             expect(prisma.rol.findFirst).toHaveBeenCalled();
             expect(prisma.usuario.create).toHaveBeenCalled();
-            expect(prisma.termino_aceptado.create).toHaveBeenCalled();
-            expect(prisma.log_auditoria.create).toHaveBeenCalled();
+            expect(prisma.terminoAceptado.create).toHaveBeenCalled();
+            expect(prisma.logAuditoria.create).toHaveBeenCalled();
         });
 
         it('debe retornar 409 si el correo ya existe (violación UNIQUE)', async () => {

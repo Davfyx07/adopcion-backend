@@ -30,13 +30,13 @@ describe('Módulo de Mascota - Cambio de Estado (HU-MA-03)', () => {
     });
 
     describe('PATCH /api/mascotas/:id/estado', () => {
-        const idMascota = '123e4567-e89b-12d3-a456-426614174000';
+        const idMascota = 999;
 
         it('debe cambiar el estado exitosamente (disponible -> en_proceso)', async () => {
             // ── Prisma calls dentro de $transaction ──
             // 1. $queryRaw FOR UPDATE → mascota
             // 2. mascota.update → OK
-            // 3. log_auditoria.create → OK
+            // 3. logAuditoria.create → OK
             prisma.$queryRaw.mockResolvedValueOnce([{
                 id_mascota: idMascota,
                 id_albergue: 1,
@@ -44,7 +44,7 @@ describe('Módulo de Mascota - Cambio de Estado (HU-MA-03)', () => {
                 nombre: 'Firulais'
             }]);
             prisma.mascota.update.mockResolvedValueOnce({});
-            prisma.log_auditoria.create.mockResolvedValueOnce({});
+            prisma.logAuditoria.create.mockResolvedValueOnce({});
 
             const res = await request(app)
                 .patch(`/api/mascotas/${idMascota}/estado`)
@@ -93,7 +93,7 @@ describe('Módulo de Mascota - Cambio de Estado (HU-MA-03)', () => {
             // 2. mascota.update → OK
             // 3. match.findMany → [{ id_adoptante: 100 }]
             // 4. notificacion.create → OK (por cada match)
-            // 5. log_auditoria.create → OK
+            // 5. logAuditoria.create → OK
             prisma.$queryRaw.mockResolvedValueOnce([{
                 id_mascota: idMascota,
                 id_albergue: 1,
@@ -105,7 +105,7 @@ describe('Módulo de Mascota - Cambio de Estado (HU-MA-03)', () => {
                 { id_adoptante: 100 }
             ]);
             prisma.notificacion.create.mockResolvedValue({});
-            prisma.log_auditoria.create.mockResolvedValueOnce({});
+            prisma.logAuditoria.create.mockResolvedValueOnce({});
 
             const res = await request(app)
                 .patch(`/api/mascotas/${idMascota}/estado`)

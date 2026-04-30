@@ -11,7 +11,7 @@ const MAX_LOGIN_ATTEMPTS = 5;
 const BLOCK_DURATION_MINUTES = 15;
 
 const verificarBloqueo = (user) => {
-    if (user.estado_cuenta === 'bloqueado temporal' && user.bloqueado_hasta) {
+    if (user.estado_cuenta === 'bloqueado_temporal' && user.bloqueado_hasta) {
         const now = new Date();
         if (now < new Date(user.bloqueado_hasta)) {
             throw { status: 403, message: "Cuenta bloqueada temporalmente." };
@@ -111,7 +111,7 @@ const registerUser = async ({ email, password, role, ip }) => {
             }
 
             // 4. Registrar Términos y Condiciones aceptados
-            await tx.termino_aceptado.create({
+            await tx.terminoAceptado.create({
                 data: {
                     id_usuario: user.id_usuario,
                     version_documento: TERMS_VERSION,
@@ -120,7 +120,7 @@ const registerUser = async ({ email, password, role, ip }) => {
             });
 
             // 5. Log de auditoría
-            await tx.log_auditoria.create({
+            await tx.logAuditoria.create({
                 data: {
                     id_autor: user.id_usuario,
                     accion: 'REGISTRO_USUARIO',
@@ -178,7 +178,7 @@ const loginUser = async ({ email, password, ip }) => {
             }
 
             // 1. Verificar si la cuenta está bloqueada temporalmente
-            if (user.estado_cuenta === 'bloqueado temporal' && user.bloqueado_hasta) {
+            if (user.estado_cuenta === 'bloqueado_temporal' && user.bloqueado_hasta) {
                 const now = new Date();
                 const blockedUntil = new Date(user.bloqueado_hasta);
 
@@ -223,7 +223,7 @@ const loginUser = async ({ email, password, ip }) => {
                     });
 
                     // Auditoría de cuenta bloqueada
-                    await tx.log_auditoria.create({
+                    await tx.logAuditoria.create({
                         data: {
                             id_autor: user.id_usuario,
                             accion: 'BLOQUEO_CUENTA',
@@ -241,7 +241,7 @@ const loginUser = async ({ email, password, ip }) => {
                 }
 
                 // Auditoría de login fallido
-                await tx.log_auditoria.create({
+                await tx.logAuditoria.create({
                     data: {
                         id_autor: user.id_usuario,
                         accion: 'LOGIN_FALLIDO',
@@ -255,19 +255,19 @@ const loginUser = async ({ email, password, ip }) => {
             }
 
             // 3. Login Exitoso (resetear intentos si había)
-            if (user.intentos_fallidos > 0 || user.estado_cuenta === 'bloqueado temporal') {
+            if (user.intentos_fallidos > 0 || user.estado_cuenta === 'bloqueado_temporal') {
                 await tx.usuario.update({
                     where: { id_usuario: user.id_usuario },
                     data: {
                         intentos_fallidos: 0,
                         bloqueado_hasta: null,
-                        estado_cuenta: user.estado_cuenta === 'bloqueado temporal' ? 'activo' : user.estado_cuenta,
+                        estado_cuenta: user.estado_cuenta === 'bloqueado_temporal' ? 'activo' : user.estado_cuenta,
                     }
                 });
             }
 
             // Auditoría Login Exitoso
-            await tx.log_auditoria.create({
+            await tx.logAuditoria.create({
                 data: {
                     id_autor: user.id_usuario,
                     accion: 'LOGIN_EXITOSO',
@@ -332,7 +332,7 @@ const forgotPassword = async ({ email, ip }) => {
             const token = crypto.randomBytes(32).toString('hex');
             const expires = new Date(Date.now() + 3600000); // 1 hora
 
-            await tx.recuperacion_password.create({
+            await tx.recuperacionPassword.create({
                 data: {
                     id_usuario: user.id_usuario,
                     token_hash: token,
@@ -342,7 +342,7 @@ const forgotPassword = async ({ email, ip }) => {
             });
 
             // Auditoría
-            await tx.log_auditoria.create({
+            await tx.logAuditoria.create({
                 data: {
                     id_autor: user.id_usuario,
                     accion: 'SOLICITUD_RECUPERACION',
@@ -377,7 +377,7 @@ const resetPassword = async ({ token, newPassword, ip }) => {
     try {
         return await prisma.$transaction(async (tx) => {
             // Búsqueda del token de recuperación (directa, optimizada)
-            const recovery = await tx.recuperacion_password.findFirst({
+            const recovery = await tx.recuperacionPassword.findFirst({
                 where: {
                     token_hash: token,
                     estado: 'pendiente',
@@ -397,12 +397,12 @@ const resetPassword = async ({ token, newPassword, ip }) => {
                 data: { password_hash: passwordHash }
             });
 
-            await tx.recuperacion_password.update({
+            await tx.recuperacionPassword.update({
                 where: { id_token },
                 data: { estado: 'usado' }
             });
 
-            await tx.log_auditoria.create({
+            await tx.logAuditoria.create({
                 data: {
                     id_autor: id_usuario,
                     accion: 'RESET_PASSWORD',
@@ -451,12 +451,12 @@ const logoutUser = async ({ token, ip }) => {
                 : new Date(Date.now() + 24 * 60 * 60 * 1000);
 
             // Insertar en blacklist (evitar duplicados)
-            const existing = await tx.blacklist_token.findFirst({
+            const existing = await tx.blacklistToken.findFirst({
                 where: { token_hash: tokenHash }
             });
 
             if (!existing) {
-                await tx.blacklist_token.create({
+                await tx.blacklistToken.create({
                     data: {
                         token_hash: tokenHash,
                         fecha_expiracion: expirationDate,
@@ -465,7 +465,7 @@ const logoutUser = async ({ token, ip }) => {
             }
 
             // Auditoría
-            await tx.log_auditoria.create({
+            await tx.logAuditoria.create({
                 data: {
                     id_autor: decoded.id,
                     accion: 'LOGOUT',

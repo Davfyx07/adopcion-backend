@@ -28,16 +28,16 @@ describe('Módulo de Recuperación de Contraseña (HU-AUTH-03)', () => {
         it('debe enviar un correo de recuperación si el usuario existe', async () => {
             // ── Prisma calls dentro de $transaction ──
             // 1. tx.usuario.findUnique → { id_usuario, correo, ... }
-            // 2. tx.recuperacion_password.create → OK
-            // 3. tx.log_auditoria.create → OK
+            // 2. tx.recuperacionPassword.create → OK
+            // 3. tx.logAuditoria.create → OK
             prisma.usuario.findUnique.mockResolvedValue({
                 id_usuario: 1,
                 correo: 'test@ejemplo.com',
                 bloqueado_hasta: null,
                 intentos_fallidos: 0
             });
-            prisma.recuperacion_password.create.mockResolvedValue({});
-            prisma.log_auditoria.create.mockResolvedValue({});
+            prisma.recuperacionPassword.create.mockResolvedValue({});
+            prisma.logAuditoria.create.mockResolvedValue({});
 
             const res = await request(app)
                 .post('/api/auth/forgot-password')
@@ -45,7 +45,7 @@ describe('Módulo de Recuperación de Contraseña (HU-AUTH-03)', () => {
 
             expect(res.status).toBe(200);
             expect(res.body.message).toContain('Enlace de recuperación enviado con éxito');
-            expect(prisma.recuperacion_password.create).toHaveBeenCalled();
+            expect(prisma.recuperacionPassword.create).toHaveBeenCalled();
         });
 
         it('debe enviar una respuesta exitosa incluso si el usuario no existe (seguridad)', async () => {
@@ -67,11 +67,11 @@ describe('Módulo de Recuperación de Contraseña (HU-AUTH-03)', () => {
             const tokenValido = 'token-uuid-seguro';
 
             // ── Prisma calls dentro de $transaction ──
-            // 1. tx.recuperacion_password.findFirst → token válido
+            // 1. tx.recuperacionPassword.findFirst → token válido
             // 2. tx.usuario.update → nueva contraseña
-            // 3. tx.recuperacion_password.update → marcar usado
-            // 4. tx.log_auditoria.create → OK
-            prisma.recuperacion_password.findFirst.mockResolvedValue({
+            // 3. tx.recuperacionPassword.update → marcar usado
+            // 4. tx.logAuditoria.create → OK
+            prisma.recuperacionPassword.findFirst.mockResolvedValue({
                 id_token: 1,
                 id_usuario: 1,
                 token_hash: tokenValido,
@@ -79,8 +79,8 @@ describe('Módulo de Recuperación de Contraseña (HU-AUTH-03)', () => {
                 estado: 'pendiente'
             });
             prisma.usuario.update.mockResolvedValue({});
-            prisma.recuperacion_password.update.mockResolvedValue({});
-            prisma.log_auditoria.create.mockResolvedValue({});
+            prisma.recuperacionPassword.update.mockResolvedValue({});
+            prisma.logAuditoria.create.mockResolvedValue({});
 
             const res = await request(app)
                 .post('/api/auth/reset-password')
@@ -89,12 +89,12 @@ describe('Módulo de Recuperación de Contraseña (HU-AUTH-03)', () => {
             expect(res.status).toBe(200);
             expect(res.body.message).toContain('Contraseña actualizada');
             expect(prisma.usuario.update).toHaveBeenCalled();
-            expect(prisma.log_auditoria.create).toHaveBeenCalled();
+            expect(prisma.logAuditoria.create).toHaveBeenCalled();
         });
 
         it('debe retornar 400 si el token es inválido', async () => {
             // findFirst retorna null (token no encontrado o expirado)
-            prisma.recuperacion_password.findFirst.mockResolvedValue(null);
+            prisma.recuperacionPassword.findFirst.mockResolvedValue(null);
 
             const res = await request(app)
                 .post('/api/auth/reset-password')

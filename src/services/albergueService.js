@@ -11,9 +11,9 @@ const { uploadImage, deleteImage, validateBase64Image } = require('./storageServ
  * 3. Verificar unicidad del NIT (409 si duplicado)
  * 4. Subir logo si se proporciona (base64 → Cloudinary)
  * 5. INSERT en tabla Albergue
- * 6. INSERT en Historial_WhatsApp_Albergue (trazabilidad)
+ * 6. INSERT en historialWhatsappAlbergue (trazabilidad)
  * 7. UPDATE Usuario → estado_cuenta = 'activo'
- * 8. INSERT en Log_Auditoria
+ * 8. INSERT en logAuditoria
  */
 const createAlbergueProfile = async ({ userId, data, ip }) => {
     try {
@@ -78,7 +78,7 @@ const createAlbergueProfile = async ({ userId, data, ip }) => {
             });
 
             // 6. Registrar en historial de WhatsApp
-            await tx.historial_whatsapp_albergue.create({
+            await tx.historialWhatsappAlbergue.create({
                 data: {
                     id_albergue: userId,
                     numero_whatsapp: whatsappClean,
@@ -92,7 +92,7 @@ const createAlbergueProfile = async ({ userId, data, ip }) => {
             });
 
             // 8. Log de auditoría
-            await tx.log_auditoria.create({
+            await tx.logAuditoria.create({
                 data: {
                     id_autor: userId,
                     accion: 'CREACION_PERFIL_ALBERGUE',
@@ -186,12 +186,12 @@ const updatePerfilAlbergue = async (userId, data, ip) => {
 
             // 📞 Historial WhatsApp (si cambió)
             if (data.whatsapp_actual && data.whatsapp_actual !== current.whatsapp_actual) {
-                await tx.historial_whatsapp_albergue.updateMany({
+                await tx.historialWhatsappAlbergue.updateMany({
                     where: { id_albergue: userId, fecha_fin: null },
                     data: { fecha_fin: new Date() }
                 });
 
-                await tx.historial_whatsapp_albergue.create({
+                await tx.historialWhatsappAlbergue.create({
                     data: {
                         id_albergue: userId,
                         numero_whatsapp: data.whatsapp_actual,
@@ -225,7 +225,7 @@ const updatePerfilAlbergue = async (userId, data, ip) => {
             });
 
             // 📊 Auditoría
-            await tx.log_auditoria.create({
+            await tx.logAuditoria.create({
                 data: {
                     id_autor: userId,
                     accion: 'UPDATE_PERFIL_ALBERGUE',

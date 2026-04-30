@@ -83,7 +83,7 @@ const crearMascota = async (idAlbergue, authUserId, { nombre, descripcion, fotos
             const fotosUrls = [];
             for (let i = 0; i < fotos.length; i++) {
                 const urlSegura = await uploadImage(fotos[i], 'adopcion/mascotas');
-                await tx.mascota_foto.create({
+                await tx.mascotaFoto.create({
                     data: {
                         id_mascota: idMascota,
                         url_foto: urlSegura,
@@ -95,7 +95,7 @@ const crearMascota = async (idAlbergue, authUserId, { nombre, descripcion, fotos
 
             // 3. Validar y guardar tags
             if (tagsIds && tagsIds.length > 0) {
-                const tagsValidos = await tx.opcion_tag.count({
+                const tagsValidos = await tx.opcionTag.count({
                     where: { id_opcion: { in: tagsIds } }
                 });
 
@@ -103,7 +103,7 @@ const crearMascota = async (idAlbergue, authUserId, { nombre, descripcion, fotos
                     throw new Error('Uno o más tagsIds proporcionados no son válidos o no existen.');
                 }
 
-                await tx.mascota_tag.createMany({
+                await tx.mascotaTag.createMany({
                     data: tagsIds.map(id_opcion => ({
                         id_mascota: idMascota,
                         id_opcion,
@@ -115,7 +115,7 @@ const crearMascota = async (idAlbergue, authUserId, { nombre, descripcion, fotos
             const vectorEmbedding = await calcularEmbedding(tagsIds || []);
 
             // 5. Log de auditoría
-            await tx.log_auditoria.create({
+            await tx.logAuditoria.create({
                 data: {
                     id_autor: authUserId,
                     accion: 'creacion_mascota',
@@ -188,6 +188,7 @@ const obtenerMascotaPorId = async (idMascota) => {
             descripcion: mascota.descripcion,
             estado_adopcion: mascota.estado_adopcion,
             fecha_publicacion: mascota.fecha_publicacion,
+            updated_at: mascota.updated_at,
             id_albergue: mascota.albergue.id_usuario,
             nombre_albergue: mascota.albergue.nombre_albergue,
             logo: mascota.albergue.logo,
@@ -266,14 +267,14 @@ const actualizarMascota = async ({ id_mascota, id_albergue, data, ip }) => {
             }
 
             // Tags actuales
-            const tagsActualesRes = await tx.mascota_tag.findMany({
+            const tagsActualesRes = await tx.mascotaTag.findMany({
                 where: { id_mascota: id_mascota },
                 select: { id_opcion: true }
             });
             const tagsAntes = tagsActualesRes.map((row) => row.id_opcion);
 
             // Fotos actuales
-            const fotosActuales = await tx.mascota_foto.findMany({
+            const fotosActuales = await tx.mascotaFoto.findMany({
                 where: { id_mascota: id_mascota },
                 orderBy: { orden: 'asc' }
             });
@@ -295,7 +296,7 @@ const actualizarMascota = async ({ id_mascota, id_albergue, data, ip }) => {
                     await deleteImage(foto.url_foto, 'adopcion/mascotas');
                 }
 
-                await tx.mascota_foto.deleteMany({
+                await tx.mascotaFoto.deleteMany({
                     where: {
                         id_foto: { in: data.fotos_eliminadas },
                         id_mascota: id_mascota,
@@ -308,7 +309,7 @@ const actualizarMascota = async ({ id_mascota, id_albergue, data, ip }) => {
                 for (const foto of data.fotos) {
                     if (foto.base64) {
                         const secureUrl = await uploadImage(foto.base64, 'adopcion/mascotas');
-                        await tx.mascota_foto.create({
+                        await tx.mascotaFoto.create({
                             data: {
                                 id_mascota: id_mascota,
                                 url_foto: secureUrl,
@@ -316,7 +317,7 @@ const actualizarMascota = async ({ id_mascota, id_albergue, data, ip }) => {
                             }
                         });
                     } else if (foto.id_foto) {
-                        await tx.mascota_foto.updateMany({
+                        await tx.mascotaFoto.updateMany({
                             where: { id_foto: foto.id_foto, id_mascota: id_mascota },
                             data: { orden: foto.orden },
                         });
@@ -331,7 +332,7 @@ const actualizarMascota = async ({ id_mascota, id_albergue, data, ip }) => {
                 const tagsUnicos = [...new Set(data.tagsIds)];
 
                 if (tagsUnicos.length > 0) {
-                    const tagsValidos = await tx.opcion_tag.count({
+                    const tagsValidos = await tx.opcionTag.count({
                         where: { id_opcion: { in: tagsUnicos } }
                     });
                     if (tagsValidos !== tagsUnicos.length) {
@@ -340,12 +341,12 @@ const actualizarMascota = async ({ id_mascota, id_albergue, data, ip }) => {
                 }
 
                 tagsDespues = tagsUnicos;
-                await tx.mascota_tag.deleteMany({
+                await tx.mascotaTag.deleteMany({
                     where: { id_mascota: id_mascota }
                 });
 
                 if (tagsUnicos.length > 0) {
-                    await tx.mascota_tag.createMany({
+                    await tx.mascotaTag.createMany({
                         data: tagsUnicos.map(id_opcion => ({
                             id_mascota: id_mascota,
                             id_opcion,
@@ -372,7 +373,7 @@ const actualizarMascota = async ({ id_mascota, id_albergue, data, ip }) => {
             });
 
             // Fotos finales para auditoría
-            const fotosFinales = await tx.mascota_foto.findMany({
+            const fotosFinales = await tx.mascotaFoto.findMany({
                 where: { id_mascota: id_mascota },
                 orderBy: { orden: 'asc' }
             });
@@ -387,7 +388,7 @@ const actualizarMascota = async ({ id_mascota, id_albergue, data, ip }) => {
             });
 
             // auditoría
-            await tx.log_auditoria.create({
+            await tx.logAuditoria.create({
                 data: {
                     id_autor: id_albergue,
                     accion: 'UPDATE_MASCOTA',
@@ -507,7 +508,7 @@ const cambiarEstadoMascota = async (idMascota, idAlbergue, nuevoEstado, motivo, 
             }
 
             // Auditoría
-            await tx.log_auditoria.create({
+            await tx.logAuditoria.create({
                 data: {
                     id_autor: idAlbergue,
                     accion: 'cambio_estado_mascota',
@@ -732,13 +733,13 @@ const listarMisMascotas = async (idAlbergue, { page, limit }) => {
 
 const calcularCompatibilidad = async (idAdoptante) => {
     // Tags del adoptante
-    const adoptanteTagsRows = await prisma.adoptante_tag.findMany({
+    const adoptante_tagsRows = await prisma.adoptanteTag.findMany({
         where: { id_usuario: idAdoptante },
         select: { id_opcion: true }
     });
-    const adoptanteTags = adoptanteTagsRows.map(r => r.id_opcion);
+    const adoptante_tags = adoptante_tagsRows.map(r => r.id_opcion);
 
-    if (adoptanteTags.length === 0) {
+    if (adoptante_tags.length === 0) {
         return [];
     }
 
@@ -764,7 +765,7 @@ const calcularCompatibilidad = async (idAdoptante) => {
     const mascotaIds = mascotasRes.map(m => m.id_mascota);
 
     // Tags de todas las mascotas (batch)
-    const allTagsRows = await prisma.mascota_tag.findMany({
+    const allTagsRows = await prisma.mascotaTag.findMany({
         where: { id_mascota: { in: mascotaIds } },
         select: { id_mascota: true, id_opcion: true }
     });
@@ -809,10 +810,10 @@ const calcularCompatibilidad = async (idAdoptante) => {
 
     const resultados = [];
     for (const mascota of mascotasRes) {
-        const mascotaTags = tagsPorMascota.get(mascota.id_mascota) || [];
+        const mascota_tags = tagsPorMascota.get(mascota.id_mascota) || [];
 
-        const comunes = adoptanteTags.filter(t => mascotaTags.includes(t));
-        const todosUnicos = [...new Set([...adoptanteTags, ...mascotaTags])];
+        const comunes = adoptante_tags.filter(t => mascota_tags.includes(t));
+        const todosUnicos = [...new Set([...adoptante_tags, ...mascota_tags])];
         const score = todosUnicos.length > 0 ? Math.round((comunes.length / todosUnicos.length) * 100) : 0;
 
         if (score > 0) {
@@ -860,7 +861,7 @@ const eliminarMascota = async (idMascota, idAlbergue, motivo) => {
                 }
             });
 
-            await tx.log_auditoria.create({
+            await tx.logAuditoria.create({
                 data: {
                     id_autor: idAlbergue,
                     accion: 'ELIMINACION_MASCOTA',

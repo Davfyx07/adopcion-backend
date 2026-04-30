@@ -18,20 +18,20 @@ const crearMascota = async (req, res) => {
             data: result
         });
     } catch (error) {
-        console.error('[mascotaController] Error en crearMascota:', error);
+        console.error('[mascotaController] Error en crearMascota:', error.message, error.stack);
         if (error.message.includes('tagsIds proporcionados no son válidos')) {
             return res.status(400).json({ success: false, message: error.message });
         }
         return res.status(500).json({
             success: false,
-            message: 'Error interno del servidor al publicar la mascota.'
+            message: 'Error interno del servidor al publicar la mascota: ' + error.message
         });
     }
 };
 
 const previsualizarMascota = async (req, res) => {
     try {
-        const { id } = req.params;
+        const id = parseInt(req.params.id);
         const mascota = await mascotaService.obtenerMascotaPorId(id);
 
         if (!mascota) {
@@ -56,7 +56,7 @@ const previsualizarMascota = async (req, res) => {
 
 const actualizarMascotaController = async (req, res) => {
     try {
-        const { id } = req.params;
+        const id = parseInt(req.params.id);
         const id_albergue = req.user.id;
         const ip = req.socket.remoteAddress || req.ip;
 
@@ -84,7 +84,7 @@ const actualizarMascotaController = async (req, res) => {
 
 const cambiarEstado = async (req, res) => {
     try {
-        const { id } = req.params;
+        const id = parseInt(req.params.id);
         const { estado, motivo } = req.body;
         const authUserId = req.user.id;
         const clientIp = req.socket.remoteAddress || req.ip;
@@ -182,6 +182,32 @@ const misMascotas = async (req, res) => {
     }
 };
 
+const eliminarMascotaController = async (req, res) => {
+    try {
+        const id = parseInt(req.params.id);
+        const idAlbergue = req.user.id;
+        const { motivo } = req.body;
+        console.log('[DELETE DEBUG] id:', id, 'idAlbergue:', idAlbergue, 'motivo:', motivo);
+
+        const result = await mascotaService.eliminarMascota(id, idAlbergue, motivo);
+
+        if (!result.success) {
+            return res.status(result.status).json(result);
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: result.message
+        });
+    } catch (error) {
+        console.error('[mascotaController] Error en eliminarMascotaController:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Error interno del servidor al eliminar la mascota.'
+        });
+    }
+};
+
 module.exports = {
     crearMascota,
     previsualizarMascota,
@@ -189,5 +215,6 @@ module.exports = {
     cambiarEstado,
     feed,
     match,
-    misMascotas
+    misMascotas,
+    eliminarMascotaController
 };

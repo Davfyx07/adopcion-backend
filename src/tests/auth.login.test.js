@@ -41,9 +41,9 @@ describe('HU-AUTH-02 - Inicio de Sesión', () => {
 
             // ── Prisma calls dentro de $transaction ──
             // 1. tx.usuario.findUnique → usuarioMock (with include.rol)
-            // 2. tx.log_auditoria.create → OK (login exitoso)
+            // 2. tx.logAuditoria.create → OK (login exitoso)
             prisma.usuario.findUnique.mockResolvedValue(usuarioMock);
-            prisma.log_auditoria.create.mockResolvedValue({});
+            prisma.logAuditoria.create.mockResolvedValue({});
 
             const res = await request(app)
                 .post('/api/auth/login')
@@ -65,10 +65,10 @@ describe('HU-AUTH-02 - Inicio de Sesión', () => {
 
             // 1. tx.usuario.findUnique → usuarioMock
             // 2. tx.usuario.update → actualizar intentos_fallidos
-            // 3. tx.log_auditoria.create → LOGIN_FALLIDO
+            // 3. tx.logAuditoria.create → LOGIN_FALLIDO
             prisma.usuario.findUnique.mockResolvedValue(usuarioMock);
             prisma.usuario.update.mockResolvedValue({});
-            prisma.log_auditoria.create.mockResolvedValue({});
+            prisma.logAuditoria.create.mockResolvedValue({});
 
             const res = await request(app)
                 .post('/api/auth/login')
@@ -86,7 +86,7 @@ describe('HU-AUTH-02 - Inicio de Sesión', () => {
             const fechaFutura = new Date(Date.now() + 30 * 60 * 1000).toISOString();
             const usuarioBloqueado = {
                 ...usuarioMock,
-                estado_cuenta: 'bloqueado temporal',
+                estado_cuenta: 'bloqueado_temporal',
                 bloqueado_hasta: fechaFutura,
                 intentos_fallidos: 5
             };
@@ -128,11 +128,11 @@ describe('HU-AUTH-02 - Inicio de Sesión', () => {
 
             // 1. tx.usuario.findUnique → usuario con 4 intentos fallidos
             // 2. tx.usuario.update → bloquea (5to intento)
-            // 3. tx.log_auditoria.create → BLOQUEO_CUENTA
-            // 4. tx.log_auditoria.create → LOGIN_FALLIDO
+            // 3. tx.logAuditoria.create → BLOQUEO_CUENTA
+            // 4. tx.logAuditoria.create → LOGIN_FALLIDO
             prisma.usuario.findUnique.mockResolvedValue(usuarioConIntentos);
             prisma.usuario.update.mockResolvedValue({});
-            prisma.log_auditoria.create.mockResolvedValue({});
+            prisma.logAuditoria.create.mockResolvedValue({});
 
             const res = await request(app)
                 .post('/api/auth/login')
@@ -145,7 +145,7 @@ describe('HU-AUTH-02 - Inicio de Sesión', () => {
             expect(res.body.message).toContain('Correo o contraseña incorrectos');
 
             // Verificar que se registró el bloqueo (BLOQUEO_CUENTA)
-            expect(prisma.log_auditoria.create).toHaveBeenCalledWith(
+            expect(prisma.logAuditoria.create).toHaveBeenCalledWith(
                 expect.objectContaining({
                     data: expect.objectContaining({
                         accion: 'BLOQUEO_CUENTA'
