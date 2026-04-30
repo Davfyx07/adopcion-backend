@@ -7,7 +7,11 @@
     "test": "jest",
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
-    "prisma:generate": "prisma generate"
+    "prisma:generate": "prisma generate",
+    "seed": "node prisma/seed.js"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.js"
   },
   "keywords": [],
   "author": "",
