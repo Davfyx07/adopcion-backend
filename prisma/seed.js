@@ -3,7 +3,10 @@ const bcrypt = require('bcrypt');
 
 const prisma = new PrismaClient();
 
-const PASSWORD_HASH = bcrypt.hashSync('FurMatch2025!', 10);
+// IMPORTANTE: Nunca commitear contraseñas reales.
+// Usar variable de entorno SEED_PASSWORD o fallback seguro solo para desarrollo local.
+const SEED_PASSWORD = process.env.SEED_PASSWORD || 'CambiarEstaContrasena123!';
+const PASSWORD_HASH = bcrypt.hashSync(SEED_PASSWORD, 10);
 
 async function main() {
   console.log('🌱 Iniciando seed de datos demo...\n');
@@ -394,10 +397,7 @@ async function main() {
   console.log(`   - ${adoptantesCreados.length} adoptantes demo`);
   console.log(`   - ${mascotasData.length} mascotas`);
   console.log(`   - ${tagsData.length} tags con opciones`);
-  console.log('\n🔑 Credenciales de prueba (todos con password: FurMatch2025!)');
-  console.log('   - admin@furmatch.local');
-  console.log('   - pruebas.adoptante@furmatch.local');
-  console.log('   - pruebas.albergue@furmatch.local');
+  console.log('\n🔑 Usuarios base creados. Usar SEED_PASSWORD o variable de entorno.');
 }
 
 main()
