@@ -4,8 +4,8 @@ const bcrypt = require('bcrypt');
 const prisma = new PrismaClient();
 
 // IMPORTANTE: Nunca commitear contraseñas reales.
-// Usar variable de entorno SEED_PASSWORD o fallback seguro solo para desarrollo local.
-const SEED_PASSWORD = process.env.SEED_PASSWORD || 'CambiarEstaContrasena123!';
+// Usar variable de entorno SEED_PASSWORD. En dev local usar el password de prueba documentado.
+const SEED_PASSWORD = process.env.SEED_PASSWORD || 'FurMatch2025!';
 const PASSWORD_HASH = bcrypt.hashSync(SEED_PASSWORD, 10);
 
 async function main() {
