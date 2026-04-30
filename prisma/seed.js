@@ -93,9 +93,73 @@ async function main() {
   // Helper para obtener id_opcion aleatorio
   const getOp = (tagName, idx) => opcionesMap.get(tagName)[idx];
 
-  // ─── 3. USUARIOS Y PERFILES ────────────────────────────────────────
-  // Usuarios existentes (ya creados en setup) no se tocan
+  // ─── 3. USUARIOS BÁSICOS DE PRUEBA ────────────────────────────────
+  // Estos usuarios se crean para que cualquiera que clone el repo
+  // tenga credenciales inmediatas para probar la app.
+  const usuariosBasicos = [
+    {
+      correo: 'admin@furmatch.local',
+      rol: 'admin',
+      estado: 'activo',
+    },
+    {
+      correo: 'pruebas.adoptante@furmatch.local',
+      rol: 'adoptante',
+      estado: 'activo',
+      perfil: {
+        nombre_completo: 'Usuario Adoptante de Prueba',
+        ciudad: 'Bogotá',
+        direccion: 'Calle 123 # 45-67, Bogotá',
+        whatsapp_adoptante: '+573001234567',
+        foto_perfil: 'https://picsum.photos/seed/adoptante/200/200',
+      },
+    },
+    {
+      correo: 'pruebas.albergue@furmatch.local',
+      rol: 'albergue',
+      estado: 'activo',
+      perfil: {
+        nit: '900999888',
+        nombre_albergue: 'Albergue de Prueba FurMatch',
+        whatsapp_actual: '+573009876543',
+        descripcion: 'Albergue de prueba para desarrollo y demos de FurMatch.',
+        logo: 'https://picsum.photos/seed/albergue/200/200',
+      },
+    },
+  ];
 
+  for (const u of usuariosBasicos) {
+    const usuario = await prisma.usuario.upsert({
+      where: { correo: u.correo },
+      update: {},
+      create: {
+        correo: u.correo,
+        password_hash: PASSWORD_HASH,
+        id_rol: rolMap[u.rol],
+        estado_cuenta: u.estado,
+      },
+    });
+
+    if (u.rol === 'adoptante' && u.perfil) {
+      await prisma.adoptante.upsert({
+        where: { id_usuario: usuario.id_usuario },
+        update: {},
+        create: { id_usuario: usuario.id_usuario, ...u.perfil },
+      });
+    }
+
+    if (u.rol === 'albergue' && u.perfil) {
+      await prisma.albergue.upsert({
+        where: { id_usuario: usuario.id_usuario },
+        update: {},
+        create: { id_usuario: usuario.id_usuario, ...u.perfil },
+      });
+    }
+
+    console.log(`👤 Usuario base creado: ${u.correo} (${u.rol})`);
+  }
+
+  // ─── 4. USUARIOS Y PERFILES DEMO ──────────────────────────────────
   // Nuevos Albergues
   const alberguesData = [
     { correo: 'albergue.felices@demo.local', nombre_albergue: 'Colitas Felices', nit: '900123456' },
@@ -325,10 +389,15 @@ async function main() {
   }
 
   console.log('\n✅ Seed completado exitosamente.');
-  console.log(`   - ${alberguesCreados.length} albergues`);
-  console.log(`   - ${adoptantesCreados.length} adoptantes`);
+  console.log(`   - ${usuariosBasicos.length} usuarios base (admin, adoptante, albergue)`);
+  console.log(`   - ${alberguesCreados.length} albergues demo`);
+  console.log(`   - ${adoptantesCreados.length} adoptantes demo`);
   console.log(`   - ${mascotasData.length} mascotas`);
   console.log(`   - ${tagsData.length} tags con opciones`);
+  console.log('\n🔑 Credenciales de prueba (todos con password: FurMatch2025!)');
+  console.log('   - admin@furmatch.local');
+  console.log('   - pruebas.adoptante@furmatch.local');
+  console.log('   - pruebas.albergue@furmatch.local');
 }
 
 main()
