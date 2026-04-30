@@ -3,7 +3,7 @@ dist/
 .env
 *.js.map
 
-# Firebase service account keys (NUNCA subir al repo)
-config/*-firebase-adminsdk*.json
+# Service account keys y credenciales cloud (NUNCA subir al repo)
+config/*.json
 
 /src/generated/prisma
