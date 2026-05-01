@@ -44,10 +44,14 @@ const validateBase64Image = (base64) => {
 const uploadImage = async (source, folder = 'adopcion') => {
     try {
         // Bypass para desarrollo local sin Cloudinary configurado
-        const cloudConfigured = process.env.CLOUD_NAME && process.env.CLOUD_KEY && process.env.CLOUD_SECRET
-            && !process.env.CLOUD_NAME.includes('tu_') && !process.env.CLOUD_KEY.includes('tu_');
+        const hasCloudName = process.env.CLOUD_NAME && process.env.CLOUD_NAME.length > 0 && !process.env.CLOUD_NAME.includes('tu_');
+        const hasCloudKey = process.env.CLOUD_KEY && process.env.CLOUD_KEY.length > 0 && !process.env.CLOUD_KEY.includes('tu_');
+        const hasCloudSecret = process.env.CLOUD_SECRET && process.env.CLOUD_SECRET.length > 0;
+        const cloudConfigured = hasCloudName && hasCloudKey && hasCloudSecret;
+        
         if (!cloudConfigured) {
             console.warn('[storage] Cloudinary no configurado. Usando URL mock para desarrollo.');
+            console.warn('[storage] hasCloudName:', hasCloudName, 'hasCloudKey:', hasCloudKey, 'hasCloudSecret:', hasCloudSecret);
             return `https://res.cloudinary.com/demo/image/upload/v1/${folder}/mock_${Date.now()}.jpg`;
         }
 
