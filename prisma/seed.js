@@ -1,7 +1,5 @@
-const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcrypt');
-
-const prisma = new PrismaClient();
+const prisma = require('../src/config/prisma');
 
 // IMPORTANTE: Nunca commitear contraseñas reales.
 // Usar variable de entorno SEED_PASSWORD. En dev local usar el password de prueba documentado.
