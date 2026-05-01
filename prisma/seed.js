@@ -69,6 +69,21 @@ async function main() {
       categoria: 'Físico',
       opciones: ['Corto', 'Medio', 'Largo', 'Sin pelo'],
     },
+    {
+      nombre_tag: 'Tipo de animal',
+      categoria: 'Caracteristicas',
+      opciones: ['Perro', 'Gato'],
+    },
+    {
+      nombre_tag: 'Sexo',
+      categoria: 'Caracteristicas',
+      opciones: ['Macho', 'Hembra'],
+    },
+    {
+      nombre_tag: 'Color',
+      categoria: 'Físico',
+      opciones: ['Negro', 'Blanco', 'Marrón', 'Gris', 'Naranja', 'Mixto'],
+    },
   ];
 
   const opcionesMap = new Map(); // tagName -> [{valor, id_opcion}]
