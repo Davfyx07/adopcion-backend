@@ -79,8 +79,12 @@ const uploadImage = async (source, folder = 'adopcion') => {
  */
 const deleteImage = async (url, folder = 'adopcion') => {
     try {
-        const publicId = url.split('/').pop().split('.')[0];
-        await cloudinary.uploader.destroy(`${folder}/${publicId}`);
+        // Extraer public_id completo incluyendo subfolders
+        // URL: https://res.cloudinary.com/cloud/image/upload/v123/folder/sub/file.jpg
+        // public_id: folder/sub/file
+        const uploadMatch = url.match(/\/upload\/(?:v\d+\/)?(.+?)\.[^.]+$/);
+        const publicId = uploadMatch ? uploadMatch[1] : `${folder}/${url.split('/').pop().split('.')[0]}`;
+        await cloudinary.uploader.destroy(publicId);
     } catch (err) {
         console.warn('[storage] No se pudo eliminar imagen anterior:', err.message);
     }
