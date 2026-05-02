@@ -283,7 +283,7 @@ const loginUser = async ({ email, password, ip }) => {
                 role: user.rol.nombre_rol.toLowerCase(),
             };
 
-            const token = jwt.sign(payload, process.env.JWT_SECRET || 'fallback_secret', {
+            const token = jwt.sign(payload, process.env.JWT_SECRET, {
                 expiresIn: process.env.JWT_EXPIRES_IN || '24h',
             });
 
