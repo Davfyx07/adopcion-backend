@@ -160,13 +160,14 @@ const obtenerMascotaPorId = async (idMascota) => {
         const mascota = await prisma.mascota.findUnique({
             where: { id_mascota: idMascota },
             include: {
-                albergue: {
-                    select: {
-                        id_usuario: true,
-                        nombre_albergue: true,
-                        logo: true,
-                    }
-                },
+      albergue: {
+        select: {
+          id_usuario: true,
+          nombre_albergue: true,
+          logo: true,
+          whatsapp_actual: true,
+        }
+      },
                 mascota_foto: {
                     orderBy: { orden: 'asc' },
                     select: { id_foto: true, url_foto: true, orden: true }
@@ -194,9 +195,10 @@ const obtenerMascotaPorId = async (idMascota) => {
             estado_adopcion: mascota.estado_adopcion,
             fecha_publicacion: mascota.fecha_publicacion,
             updated_at: mascota.updated_at,
-            id_albergue: mascota.albergue.id_usuario,
-            nombre_albergue: mascota.albergue.nombre_albergue,
-            logo: mascota.albergue.logo,
+    id_albergue: mascota.albergue.id_usuario,
+    nombre_albergue: mascota.albergue.nombre_albergue,
+    whatsapp_albergue: mascota.albergue.whatsapp_actual,
+    logo: mascota.albergue.logo,
             fotos: mascota.mascota_foto,
             tags: mascota.mascota_tag.map(mt => ({
                 id_opcion: mt.id_opcion,
