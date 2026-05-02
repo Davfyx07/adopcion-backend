@@ -119,7 +119,10 @@ npm test -- mascota   # Tests de mascotas
 → Verificar que PostgreSQL esté corriendo: `pg_isready`
 
 **Login falla con "Password incorrecto" después del seed**
-→ El seed usa `SEED_PASSWORD` del `.env` o fallback `FurMatch2025!`. Si cambiaste el `.env`, corré `npm run seed` de nuevo.
+→ El seed requiere `SEED_PASSWORD` en el `.env`. Si no está definida, el seed falla con un error claro. Definila en `.env` y corré `npm run seed` de nuevo.
+
+**Error: "SEED_PASSWORD no está definida"**
+→ Agregá `SEED_PASSWORD=FurMatch2025!` (o la que prefieras) a tu `.env`. Nunca commitees contraseñas.
 
 ---
 

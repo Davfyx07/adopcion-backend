@@ -25,13 +25,26 @@ npm install
 Crea un archivo `.env` en la raíz del proyecto (al mismo nivel que `package.json`) basándote en la siguiente configuración (ajusta las variables según tu entorno de despliegue). En el archivo `.env.example` encontrarás la estructura base:
 
 ```env
-PORT=
-DB_HOST=
-DB_PORT=
-DB_NAME=
-DB_USER=
+PORT=3002
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=furmatch
+DB_USER=postgres
 DB_PASSWORD=
+DATABASE_URL="postgresql://postgres:tu_password@localhost:5432/furmatch?schema=public"
+JWT_SECRET=tu_secreto_jwt_seguro
+JWT_EXPIRES_IN=24h
+SEED_PASSWORD=FurMatch2025!
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=tu_correo@gmail.com
+SMTP_PASS=tu_app_password
+CLOUD_NAME=tu_cloud_name
+CLOUD_KEY=tu_api_key
+CLOUD_SECRET=tu_api_secret
 ```
+
+> **IMPORTANTE:** Nunca commitees el archivo `.env`. Ya está en `.gitignore`.
 
 ### 3. Configurar la Base de Datos
 1. Crea una base de datos en PostgreSQL.
@@ -44,7 +57,7 @@ Para correr el proyecto en modo desarrollo con auto-recarga (Nodemon):
 ```bash
 npm run dev
 ```
-La consola debería mostrarte: `Server corriendo en http://localhost:3000`
+La consola debería mostrarte: `Server corriendo en http://localhost:3002` (el puerto por defecto es 3002, configurable en `.env`)
 
 ---
 
