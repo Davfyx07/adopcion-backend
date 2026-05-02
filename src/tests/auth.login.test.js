@@ -1,6 +1,7 @@
 // ──────────────────────────────────────────────
 // Mock de Prisma (reemplaza pg Pool)
 // ──────────────────────────────────────────────
+process.env.JWT_SECRET = 'test-jwt-secret-key';
 jest.mock('../config/prisma', () => require('./__mocks__/prisma'));
 
 const prisma = require('../config/prisma');
