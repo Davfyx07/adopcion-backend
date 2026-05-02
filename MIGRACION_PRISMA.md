@@ -1,62 +1,43 @@
-# Migración a Prisma ORM — FurMatch Backend
+# Prisma ORM — FurMatch Backend
 
 ## Estado actual
 
-El backend usa **Prisma ORM** como capa de acceso a datos principal. Se migró desde `pg` Pool directo a Prisma Client.
+El backend usa **Prisma ORM 7** como capa de acceso a datos. La conexión a PostgreSQL se maneja exclusivamente a través de Prisma con `DATABASE_URL` — una sola variable de entorno para toda la configuración de BD.
 
-## Dependencias
+## Setup rápido
 
 ```bash
-# Instalar dependencias (incluye Prisma)
 npm install
-```
-
-## Generar el cliente Prisma
-
-```bash
 npx prisma generate
 ```
 
-Esto lee `prisma/schema.prisma` y genera el cliente en `node_modules/@prisma/client`.
+## Variable de entorno
 
-## Variables de entorno
-
-Asegurate de tener `DATABASE_URL` en `.env`:
+Solo necesitás `DATABASE_URL` en `.env`:
 
 ```env
-DATABASE_URL="postgresql://usuario:contraseña@host:5432/nombre_base_datos?schema=public"
+DATABASE_URL="postgresql://usuario:contraseña@host:5432/furmatch?schema=public"
 ```
 
-Las variables legacy (`DB_HOST`, `DB_PORT`, `DB_NAME`, etc.) solo las usa `src/config/db.js` (pool de `pg`, mantenido para rollback).
+Eso es todo. No hay variables separadas para host, puerto, usuario, etc.
 
-## Correr tests
+## Comandos esenciales
 
 ```bash
-npm test
+npx prisma generate    # Generar el cliente (correr después de npm install o cambios en schema)
+npx prisma db push     # Aplicar schema a la BD (crear/alterar tablas)
+npx prisma db pull     # Si alguien modifica la BD directamente, reflejarlo en el schema
+npx prisma studio      # Explorador visual de la BD en el navegador
+npm run seed           # Cargar datos de prueba
+npm test               # 81 tests, 12 suites
 ```
-
-32 tests en 7 suites. Todos deben pasar.
-
-## Si la BD cambia (schema drift)
-
-Si alguien modifica la BD directamente y necesitás reflejar los cambios en Prisma:
-
-```bash
-npx prisma db pull
-npx prisma generate
-```
-
-Esto actualiza `prisma/schema.prisma` con los cambios detectados en la BD.
-
-## Nota sobre `src/config/db.js`
-
-Se mantiene exclusivamente como **fallback para rollback**. No se usa en ningún servicio productivo. Cuando la migración esté establecida y no haya planes de revertir, se puede eliminar junto con la dependencia `pg` del `package.json`.
 
 ## Archivos clave
 
 | Archivo | Propósito |
 |---------|-----------|
-| `prisma/schema.prisma` | Schema completo de la BD |
-| `src/config/prisma.js` | Cliente Prisma con soft-delete middleware |
-| `src/config/db.js` | Pool legacy de `pg` (solo rollback) |
+| `prisma/schema.prisma` | Schema completo de la BD (fuente de verdad) |
+| `prisma.config.ts` | Configuración de Prisma (lee DATABASE_URL) |
+| `prisma/seed.js` | Datos iniciales y de prueba |
+| `src/config/prisma.js` | Cliente Prisma con driver adapter + soft-delete middleware |
 | `src/tests/__mocks__/prisma.js` | Mock de Prisma para tests |
