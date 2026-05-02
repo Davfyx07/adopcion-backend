@@ -149,9 +149,9 @@ const obtenerPerfilAdoptante = async (idUsuario) => {
                 usuario: {
                     select: { correo: true }
                 },
-                adoptanteTag: {
+                adoptante_tag: {
                     include: {
-                        opcionTag: {
+                        opcion_tag: {
                             include: {
                                 tag: true
                             }
@@ -173,11 +173,8 @@ const obtenerPerfilAdoptante = async (idUsuario) => {
                 whatsapp: perfil.whatsapp_adoptante,
                 ciudad: perfil.ciudad,
                 foto_url: perfil.foto_perfil,
-                etiquetas: perfil.adoptanteTag.map(at => ({
-                    id_opcion: at.id_opcion,
-                    valor: at.opcionTag.valor,
-                    categoria: at.opcionTag.tag.nombre_tag,
-                })),
+                email: perfil.usuario?.correo,
+                tags: perfil.adoptante_tag.map(at => at.opcion_tag.valor),
             }
         };
     } catch (err) {
