@@ -10,13 +10,13 @@ const getEtiquetas = async () => {
     // Usamos $queryRaw porque Prisma no soporta ORDER BY sobre columnas de tablas
     // relacionadas con `include`. La query original hace JOIN Tag + OpcionTag
     // y ordena por t.categoria ASC, ot.valor ASC.
-    const result = await prisma.$queryRaw`
-        SELECT ot.id_opcion, ot.valor, t.nombre_tag AS categoria, t.es_filtro_absoluto AS es_obligatoria
-        FROM opcion_tag ot
-        JOIN tag t ON ot.id_tag = t.id_tag
-        WHERE t.estado = 'activo'
-        ORDER BY t.categoria ASC, ot.valor ASC
-    `;
+  const result = await prisma.$queryRaw`
+    SELECT ot.id_opcion, ot.valor, t.nombre_tag AS categoria, t.es_filtro_absoluto AS es_obligatoria
+    FROM opcion_tag ot
+    JOIN tag t ON ot.id_tag = t.id_tag
+    WHERE t.estado = 'activo' AND ot.estado = 'activo'
+    ORDER BY t.categoria ASC, ot.valor ASC
+  `;
     return result;
 };
 

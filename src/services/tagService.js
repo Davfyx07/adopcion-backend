@@ -1,11 +1,20 @@
 const prisma = require('../config/prisma');
 
 const getTags = async (estado) => {
-    const where = {};
-    if (estado) {
-        where.estado = estado;
-    }
-    return prisma.tag.findMany({ where });
+  const where = {};
+  if (estado) {
+    where.estado = estado;
+  }
+  return prisma.tag.findMany({
+    where,
+    include: {
+      opcion_tag: {
+        where: { estado: 'activo' },
+        orderBy: { id_opcion: 'asc' },
+      },
+    },
+    orderBy: { id_tag: 'asc' },
+  });
 };
 
 const createTag = async (data, userId, ip) => {
@@ -133,39 +142,79 @@ const deleteTag = async (id, userId, ip) => {
 };
 
 const addOpciones = async (id, opciones, userId, ip) => {
-    if (!Array.isArray(opciones) || opciones.length === 0) {
-        return { success: false, status: 400, message: 'Debes enviar al menos una opción.' };
+  if (!Array.isArray(opciones) || opciones.length === 0) {
+    return { success: false, status: 400, message: 'Debes enviar al menos una opción.' };
+  }
+
+  return prisma.$transaction(async (tx) => {
+    // Verificar que el tag existe
+    const tag = await tx.tag.findUnique({ where: { id_tag: id } });
+    if (!tag) {
+      return { success: false, status: 404, message: 'Tag no encontrado.' };
     }
 
-    return prisma.$transaction(async (tx) => {
-        for (const op of opciones) {
-            await tx.opcionTag.create({
-                data: {
-                    id_tag: id,
-                    valor: op
-                }
-            });
-        }
+    const created = [];
+    for (const op of opciones) {
+      const opcion = await tx.opcionTag.create({
+        data: {
+          id_tag: id,
+          valor: op,
+        },
+      });
+      created.push(opcion);
+    }
 
-        await tx.logAuditoria.create({
-            data: {
-                id_autor: userId,
-                accion: 'ADD_OPCIONES_TAG',
-                entidad_afectada: 'tag',
-                id_registro_afectado: id,
-                valor_nuevo: JSON.stringify(opciones),
-                ip: ip
-            }
-        });
-
-        return { success: true };
+    await tx.logAuditoria.create({
+      data: {
+        id_autor: userId,
+        accion: 'ADD_OPCIONES_TAG',
+        entidad_afectada: 'tag',
+        id_registro_afectado: id,
+        valor_nuevo: JSON.stringify(opciones),
+        ip: ip,
+      },
     });
+
+    return { success: true, data: created };
+  });
+};
+
+const deleteOpcion = async (idTag, idOpcion, userId, ip) => {
+  return prisma.$transaction(async (tx) => {
+    const opcion = await tx.opcionTag.findUnique({
+      where: { id_opcion: idOpcion },
+    });
+
+    if (!opcion || opcion.id_tag !== Number(idTag)) {
+      return { success: false, status: 404, message: 'Opción no encontrada para este tag.' };
+    }
+
+    // Soft delete: marcar inactivo en vez de borrar
+    await tx.opcionTag.update({
+      where: { id_opcion: idOpcion },
+      data: { estado: 'inactivo' },
+    });
+
+    await tx.logAuditoria.create({
+      data: {
+        id_autor: userId,
+        accion: 'DELETE_OPCION_TAG',
+        entidad_afectada: 'opcion_tag',
+        id_registro_afectado: idOpcion,
+        valor_anterior: JSON.stringify(opcion),
+        ip: ip,
+      },
+    });
+
+    return { success: true };
+  });
 };
 
 module.exports = {
-    getTags,
-    createTag,
-    updateTag,
-    deleteTag,
-    addOpciones
+  getTags,
+  createTag,
+  updateTag,
+  deleteTag,
+  addOpciones,
+  deleteOpcion
 };
