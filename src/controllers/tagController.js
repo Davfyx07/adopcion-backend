@@ -18,39 +18,61 @@ const createTag = async (req, res) => {
 };
 
 const updateTag = async (req, res) => {
-    const ip = req.ip;
-    const result = await tagService.updateTag(req.params.id, req.body, req.user.id, ip);
+  const ip = req.ip;
+  const id = parseInt(req.params.id);
+  const result = await tagService.updateTag(id, req.body, req.user.id, ip);
 
-    if (!result.success) return res.status(result.status).json(result);
+  if (!result.success) return res.status(result.status).json(result);
 
-    res.json({ success: true, data: result.data });
+  res.json({ success: true, data: result.data });
 };
 
 const deleteTag = async (req, res) => {
-    const ip = req.ip;
-    const result = await tagService.deleteTag(req.params.id, req.user.id, ip);
+  const ip = req.ip;
+  const id = parseInt(req.params.id);
+  const result = await tagService.deleteTag(id, req.user.id, ip);
 
-    if (!result.success) return res.status(result.status).json(result);
+  if (!result.success) return res.status(result.status).json(result);
 
-    res.json({ success: true });
+  res.json({ success: true });
 };
 
 const addOpciones = async (req, res) => {
-    const ip = req.ip;
-    const result = await tagService.addOpciones(
-        req.params.id,
-        req.body.opciones,
-        req.user.id,
-        ip
-    );
+  const ip = req.ip;
+  const id = parseInt(req.params.id);
+  const result = await tagService.addOpciones(
+    id,
+    req.body.opciones,
+    req.user.id,
+    ip
+  );
 
-    res.json(result);
+  if (!result.success) return res.status(result.status).json(result);
+
+  res.status(201).json({ success: true, data: result.data });
+};
+
+const deleteOpcion = async (req, res) => {
+  const ip = req.ip;
+  const idTag = parseInt(req.params.id);
+  const idOpcion = parseInt(req.params.idOpcion);
+  const result = await tagService.deleteOpcion(
+    idTag,
+    idOpcion,
+    req.user.id,
+    ip
+  );
+
+  if (!result.success) return res.status(result.status).json(result);
+
+  res.json({ success: true });
 };
 
 module.exports = {
-    getTags,
-    createTag,
-    updateTag,
-    deleteTag,
-    addOpciones
+  getTags,
+  createTag,
+  updateTag,
+  deleteTag,
+  addOpciones,
+  deleteOpcion
 };

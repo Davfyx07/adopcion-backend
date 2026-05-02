@@ -5,13 +5,18 @@ const {
     crearMascota,
     previsualizarMascota,
     actualizarMascotaController,
-    cambiarEstado
+    cambiarEstado,
+    feed,
+    match,
+    misMascotas,
+    eliminarMascotaController
 } = require('../controllers/mascotaController');
 const {
     validateCreateMascota,
     validateUUIDParam,
     validateUpdateMascota,
-    validateCambioEstado
+    validateCambioEstado,
+    validateFeedQuery
 } = require('../middlewares/mascotaValidation');
 const authMiddleware = require('../middlewares/authMiddleware');
 const authorizeRole = require('../middlewares/authorizeRole');
@@ -171,6 +176,46 @@ router.post('/', authMiddleware, authorizeRole(['albergue']), validateCreateMasc
  *       500:
  *         description: Error interno al obtener la mascota
  */
+/**
+ * @swagger
+ * /api/mascotas/feed:
+ *   get:
+ *     summary: Feed de exploración de mascotas disponibles
+ *     tags: [Mascotas]
+ *     responses:
+ *       200:
+ *         description: Feed de mascotas
+ */
+router.get('/feed', validateFeedQuery, feed);
+
+/**
+ * @swagger
+ * /api/mascotas/match:
+ *   get:
+ *     summary: Matching de compatibilidad
+ *     tags: [Mascotas]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Lista ordenada por compatibilidad
+ */
+router.get('/match', authMiddleware, authorizeRole(['adoptante']), match);
+
+/**
+ * @swagger
+ * /api/mascotas/mis-mascotas:
+ *   get:
+ *     summary: Listar mascotas del albergue
+ *     tags: [Mascotas]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Lista de mascotas
+ */
+router.get('/mis-mascotas', authMiddleware, authorizeRole(['albergue']), validateFeedQuery, misMascotas);
+
 router.get('/:id', previsualizarMascota);
 
 /**
@@ -330,5 +375,49 @@ router.put('/:id', authMiddleware, authorizeRole(['albergue']), validateUUIDPara
  *         description: Error interno al cambiar el estado
  */
 router.patch('/:id/estado', authMiddleware, authorizeRole(['albergue']), validateUUIDParam, validateCambioEstado, cambiarEstado);
+
+/**
+ * @swagger
+ * /api/mascotas/{id}:
+ *   delete:
+ *     summary: Eliminar una mascota (soft-delete, Solo Albergues)
+ *     description: >
+ *       Realiza soft-delete de una mascota del albergue autenticado.
+ *       Requiere motivo opcional. Registra auditoría.
+ *     tags: [Mascotas]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: ID de la mascota.
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               motivo:
+ *                 type: string
+ *                 description: Motivo de eliminación (opcional).
+ *                 example: La mascota fue adoptada fuera de la plataforma.
+ *     responses:
+ *       200:
+ *         description: Mascota eliminada exitosamente
+ *       401:
+ *         description: Token requerido o inválido
+ *       403:
+ *         description: La mascota no pertenece al albergue autenticado
+ *       404:
+ *         description: Mascota no encontrada
+ *       500:
+ *         description: Error interno al eliminar la mascota
+ */
+router.delete('/:id', authMiddleware, authorizeRole(['albergue']), validateUUIDParam, eliminarMascotaController);
 
 module.exports = router;

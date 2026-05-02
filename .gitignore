@@ -1,4 +1,11 @@
 node_modules/
 dist/
 .env
+.env.*.backup
+.env.backup
 *.js.map
+
+# Service account keys y credenciales cloud (NUNCA subir al repo)
+config/*.json
+
+/src/generated/prisma

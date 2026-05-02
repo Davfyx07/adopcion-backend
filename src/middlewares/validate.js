@@ -14,11 +14,11 @@ const validateRegister = (req, res, next) => {
     }
 
     // CA-4: Fortaleza de contraseña
-    const passwordRegex = /^(?=.*[A-Z])(?=.*\d).{8,}$/;
+    const passwordRegex = /^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
     if (!password || !passwordRegex.test(password)) {
         errors.push({
             field: 'password',
-            message: 'La contraseña debe tener mínimo 8 caracteres, 1 mayúscula y 1 número.',
+            message: 'La contraseña debe tener mínimo 8 caracteres, 1 mayúscula, 1 número y 1 carácter especial.',
         });
     }
 
@@ -85,11 +85,11 @@ const validateResetPassword = (req, res, next) => {
 
     if (!token) errors.push({ field: 'token', message: 'El token es obligatorio.' });
 
-    const passwordRegex = /^(?=.*[A-Z])(?=.*\d).{8,}$/;
+    const passwordRegex = /^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
     if (!newPassword || !passwordRegex.test(newPassword)) {
         errors.push({
             field: 'newPassword',
-            message: 'La nueva contraseña debe tener mínimo 8 caracteres, 1 mayúscula y 1 número.',
+            message: 'La nueva contraseña debe tener mínimo 8 caracteres, 1 mayúscula, 1 número y 1 carácter especial.',
         });
     }
 

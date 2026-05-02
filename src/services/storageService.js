@@ -43,6 +43,18 @@ const validateBase64Image = (base64) => {
  */
 const uploadImage = async (source, folder = 'adopcion') => {
     try {
+        // Bypass para desarrollo local sin Cloudinary configurado
+        const hasCloudName = process.env.CLOUD_NAME && process.env.CLOUD_NAME.length > 0 && !process.env.CLOUD_NAME.includes('tu_');
+        const hasCloudKey = process.env.CLOUD_KEY && process.env.CLOUD_KEY.length > 0 && !process.env.CLOUD_KEY.includes('tu_');
+        const hasCloudSecret = process.env.CLOUD_SECRET && process.env.CLOUD_SECRET.length > 0;
+        const cloudConfigured = hasCloudName && hasCloudKey && hasCloudSecret;
+        
+        if (!cloudConfigured) {
+            console.warn('[storage] Cloudinary no configurado. Usando URL mock para desarrollo.');
+            console.warn('[storage] hasCloudName:', hasCloudName, 'hasCloudKey:', hasCloudKey, 'hasCloudSecret:', hasCloudSecret);
+            return `https://res.cloudinary.com/demo/image/upload/v1/${folder}/mock_${Date.now()}.jpg`;
+        }
+
         const result = await cloudinary.uploader.upload(source, {
             folder,
             transformation: [{ width: 800, height: 800, crop: 'limit' }],
@@ -67,8 +79,12 @@ const uploadImage = async (source, folder = 'adopcion') => {
  */
 const deleteImage = async (url, folder = 'adopcion') => {
     try {
-        const publicId = url.split('/').pop().split('.')[0];
-        await cloudinary.uploader.destroy(`${folder}/${publicId}`);
+        // Extraer public_id completo incluyendo subfolders
+        // URL: https://res.cloudinary.com/cloud/image/upload/v123/folder/sub/file.jpg
+        // public_id: folder/sub/file
+        const uploadMatch = url.match(/\/upload\/(?:v\d+\/)?(.+?)\.[^.]+$/);
+        const publicId = uploadMatch ? uploadMatch[1] : `${folder}/${url.split('/').pop().split('.')[0]}`;
+        await cloudinary.uploader.destroy(publicId);
     } catch (err) {
         console.warn('[storage] No se pudo eliminar imagen anterior:', err.message);
     }

@@ -10,39 +10,46 @@ const {
 } = require('../middlewares/tagValidation');
 
 const {
-    getTags,
-    createTag,
-    updateTag,
-    deleteTag,
-    addOpciones
+  getTags,
+  createTag,
+  updateTag,
+  deleteTag,
+  addOpciones,
+  deleteOpcion
 } = require('../controllers/tagController');
 
-router.get('/admin/etiquetas', authMiddleware, authorizeRole(['administrador']), getTags);
+router.get('/admin/etiquetas', authMiddleware, authorizeRole(['admin']), getTags);
 
 router.post('/admin/etiquetas',
     authMiddleware,
-    authorizeRole(['administrador']),
+    authorizeRole(['admin']),
     validateCreateTag,
     createTag
 );
 
 router.put('/admin/etiquetas/:id',
     authMiddleware,
-    authorizeRole(['administrador']),
+    authorizeRole(['admin']),
     validateUpdateTag,
     updateTag
 );
 
 router.delete('/admin/etiquetas/:id',
     authMiddleware,
-    authorizeRole(['administrador']),
+    authorizeRole(['admin']),
     deleteTag
 );
 
 router.post('/admin/etiquetas/:id/opciones',
-    authMiddleware,
-    authorizeRole(['administrador']),
-    addOpciones
+  authMiddleware,
+  authorizeRole(['admin']),
+  addOpciones
+);
+
+router.delete('/admin/etiquetas/:id/opciones/:idOpcion',
+  authMiddleware,
+  authorizeRole(['admin']),
+  deleteOpcion
 );
 
 module.exports = router;
