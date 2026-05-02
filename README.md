@@ -36,7 +36,7 @@ Variables que necesitás:
 
 ```env
 # Servidor
-PORT=3002
+PORT=3000
 
 # Base de datos — UNA sola variable para toda la conexión
 DATABASE_URL="postgresql://postgres:tu_password@localhost:5432/furmatch?schema=public"
@@ -79,7 +79,7 @@ npm run seed
 npm run dev
 ```
 
-La consola debería mostrarte: `Server corriendo en http://localhost:3002`
+La consola debería mostrarte: `Server corriendo en http://localhost:3000`
 
 ---
 
@@ -99,7 +99,7 @@ Más usuarios demo en `GUIA_CONFIGURACION.md` (raíz del proyecto).
 
 Una vez que el servidor esté corriendo:
 
-👉 **http://localhost:3002/api-docs**
+👉 **http://localhost:3000/api-docs**
 
 ---
 

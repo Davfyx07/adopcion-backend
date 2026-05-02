@@ -28,11 +28,6 @@ Editar `.env` con tus credenciales:
 
 **Base de datos (PostgreSQL local):**
 ```env
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=furmatch
-DB_USER=postgres
-DB_PASSWORD=tu_password
 DATABASE_URL="postgresql://postgres:tu_password@localhost:5432/furmatch?schema=public"
 ```
 
@@ -67,7 +62,7 @@ npm run seed
 npm run dev
 ```
 
-Backend corriendo en **http://localhost:3002**
+Backend corriendo en **http://localhost:3000**
 
 ---
 
