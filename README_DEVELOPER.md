@@ -16,6 +16,7 @@
 git clone <repo-backend>
 cd App/adopcion-backend
 npm install
+npx prisma generate
 ```
 
 ### 2. Configurar variables de entorno
@@ -50,7 +51,7 @@ CLOUD_SECRET=tu_api_secret
 createdb furmatch
 
 # Aplicar schema de Prisma
-npx prisma migrate dev
+npx prisma db push
 
 # Cargar datos de prueba
 npm run seed
