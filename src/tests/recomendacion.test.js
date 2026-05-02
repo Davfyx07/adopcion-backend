@@ -77,9 +77,15 @@ describe('recomendacionService', () => {
                 id_mascota: 100,
                 nombre: 'Rex',
                 estado_adopcion: 'disponible',
-                id_albergue: 50
+                id_albergue: 50,
+                mascota_tag: []
             });
             prisma.match.findFirst.mockResolvedValue(null);
+            prisma.adoptante.findUnique.mockResolvedValue({
+                id_usuario: 1,
+                adoptante_tag: []
+            });
+            prisma.tag.findMany.mockResolvedValue([]);
             
             // Mock transaction result
             prisma.match.create.mockResolvedValue({ id_match: 1 });

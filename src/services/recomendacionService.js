@@ -1,13 +1,69 @@
 const prisma = require('../config/prisma');
 
 /**
+ * Helper interno para calcular el puntaje de compatibilidad entre un adoptante y una mascota.
+ */
+const calcularPuntajeMatch = (adoptante, mascota, tagsConfig) => {
+    let puntajeAcumulado = 0;
+    let esValida = true;
+
+    // Organizar tags del adoptante por categoría
+    const adoptanteCategorias = {};
+    adoptante.adoptante_tag.forEach(at => {
+        const idTag = at.opcion_tag?.id_tag || at.id_tag; // Depende de cómo se incluya
+        if (!adoptanteCategorias[idTag]) adoptanteCategorias[idTag] = [];
+        adoptanteCategorias[idTag].push(at.id_opcion);
+    });
+
+    // Organizar tags de la mascota por categoría
+    const mascotaCategorias = {};
+    mascota.mascota_tag.forEach(mt => {
+        const idTag = mt.opcion_tag?.id_tag || mt.id_tag;
+        if (!mascotaCategorias[idTag]) mascotaCategorias[idTag] = [];
+        mascotaCategorias[idTag].push(mt.id_opcion);
+    });
+
+    const sumaTotalPesos = tagsConfig.reduce((acc, tag) => acc + parseFloat(tag.peso_matching || 0), 0);
+
+    for (const tag of tagsConfig) {
+        const idTag = tag.id_tag;
+        const peso = parseFloat(tag.peso_matching || 0);
+        const adoptanteOpciones = adoptanteCategorias[idTag] || [];
+        const mascotaOpciones = mascotaCategorias[idTag] || [];
+
+        let matchEnCategoria = false;
+        
+        // Si el adoptante no tiene preferencias (o no seleccionó nada para este tag), 
+        // cuenta como compatibilidad total (según RF-MT-01)
+        if (adoptanteOpciones.length === 0) {
+            matchEnCategoria = true;
+        } else {
+            matchEnCategoria = mascotaOpciones.some(id => adoptanteOpciones.includes(id));
+        }
+
+        // Filtro absoluto (ej: Tipo de animal)
+        if (tag.es_filtro_absoluto && !matchEnCategoria) {
+            esValida = false;
+            break;
+        }
+
+        if (matchEnCategoria) {
+            puntajeAcumulado += peso;
+        }
+    }
+
+    const porcentaje = sumaTotalPesos > 0 
+        ? Math.round((puntajeAcumulado / sumaTotalPesos) * 100) 
+        : 0;
+
+    return { esValida, porcentaje };
+};
+
+/**
  * Obtiene el feed de mascotas recomendadas para un adoptante.
- * @param {number} idAdoptante 
- * @param {Object} options - { limit, offset }
  */
 const obtenerRecomendaciones = async (idAdoptante, { limit = 20, offset = 0 } = {}) => {
     try {
-        // 1. Obtener datos del adoptante y sus tags
         const adoptante = await prisma.adoptante.findUnique({
             where: { id_usuario: idAdoptante },
             include: { adoptante_tag: { include: { opcion_tag: true } } }
@@ -15,14 +71,6 @@ const obtenerRecomendaciones = async (idAdoptante, { limit = 20, offset = 0 } = 
 
         if (!adoptante) throw new Error('Adoptante no encontrado.');
 
-        const adoptanteTags = adoptante.adoptante_tag.map(at => at.id_opcion);
-        const adoptanteCategorias = {}; // { id_tag: [id_opcion, ...] }
-        adoptante.adoptante_tag.forEach(at => {
-            if (!adoptanteCategorias[at.opcion_tag.id_tag]) adoptanteCategorias[at.opcion_tag.id_tag] = [];
-            adoptanteCategorias[at.opcion_tag.id_tag].push(at.id_opcion);
-        });
-
-        // 2. Obtener IDs de mascotas ya procesadas (Match o Descarte)
         const matches = await prisma.match.findMany({
             where: { id_adoptante: idAdoptante },
             select: { id_mascota: true }
@@ -34,7 +82,6 @@ const obtenerRecomendaciones = async (idAdoptante, { limit = 20, offset = 0 } = 
 
         const procesadasIds = [...matches.map(m => m.id_mascota), ...descartes.map(d => d.id_mascota)];
 
-        // 3. Obtener todas las mascotas disponibles
         const mascotas = await prisma.mascota.findMany({
             where: {
                 estado_adopcion: 'disponible',
@@ -47,53 +94,12 @@ const obtenerRecomendaciones = async (idAdoptante, { limit = 20, offset = 0 } = 
             }
         });
 
-        // 4. Obtener pesos y filtros absolutos de los tags
-        const tagsConfig = await prisma.tag.findMany({
-            where: { estado: 'activo' }
-        });
+        const tagsConfig = await prisma.tag.findMany({ where: { estado: 'activo' } });
 
         const recomendaciones = mascotas.map(mascota => {
-            let puntajeTotal = 0;
-            let esValida = true;
+            const { esValida, porcentaje } = calcularPuntajeMatch(adoptante, mascota, tagsConfig);
 
-            // Organizar tags de la mascota por categoría
-            const mascotaCategorias = {};
-            mascota.mascota_tag.forEach(mt => {
-                if (!mascotaCategorias[mt.opcion_tag.id_tag]) mascotaCategorias[mt.opcion_tag.id_tag] = [];
-                mascotaCategorias[mt.opcion_tag.id_tag].push(mt.id_opcion);
-            });
-
-            for (const tag of tagsConfig) {
-                const idTag = tag.id_tag;
-                const peso = parseFloat(tag.peso_matching || 0) / 100;
-                const adoptanteOpciones = adoptanteCategorias[idTag] || [];
-                const mascotaOpciones = mascotaCategorias[idTag] || [];
-
-                // Lógica de compatibilidad para esta categoría
-                let matchEnCategoria = false;
-                
-                // Si el adoptante no tiene preferencias en esta categoría, es 100% (según RF-MT-01)
-                if (adoptanteOpciones.length === 0) {
-                    matchEnCategoria = true;
-                } else {
-                    // Verificar si hay intersección entre opciones de adoptante y mascota
-                    matchEnCategoria = mascotaOpciones.some(id => adoptanteOpciones.includes(id));
-                }
-
-                // Filtro absoluto
-                if (tag.es_filtro_absoluto && !matchEnCategoria) {
-                    esValida = false;
-                    break;
-                }
-
-                if (matchEnCategoria) {
-                    puntajeTotal += peso;
-                }
-            }
-
-            const porcentajeCompatibilidad = Math.round(puntajeTotal * 100);
-
-            if (!esValida || porcentajeCompatibilidad < 30) return null;
+            if (!esValida || porcentaje < 30) return null;
 
             return {
                 id_mascota: mascota.id_mascota,
@@ -105,11 +111,10 @@ const obtenerRecomendaciones = async (idAdoptante, { limit = 20, offset = 0 } = 
                     nombre: mascota.albergue.nombre_albergue,
                     logo: mascota.albergue.logo
                 },
-                compatibilidad: porcentajeCompatibilidad
+                compatibilidad: porcentaje
             };
         }).filter(r => r !== null);
 
-        // 5. Ordenar y paginar
         recomendaciones.sort((a, b) => b.compatibilidad - a.compatibilidad);
         const paginadas = recomendaciones.slice(offset, offset + limit);
 
@@ -130,28 +135,34 @@ const obtenerRecomendaciones = async (idAdoptante, { limit = 20, offset = 0 } = 
  */
 const registrarInteres = async (idAdoptante, idMascota) => {
     try {
-        // 1. Validar mascota
         const mascota = await prisma.mascota.findUnique({
             where: { id_mascota: idMascota },
-            include: { albergue: true }
+            include: { albergue: true, mascota_tag: { include: { opcion_tag: true } } }
         });
         if (!mascota || mascota.estado_adopcion !== 'disponible') {
             return { success: false, status: 404, message: 'Mascota no disponible.' };
         }
 
-        // 2. Validar duplicado
         const existeMatch = await prisma.match.findFirst({
             where: { id_adoptante: idAdoptante, id_mascota: idMascota }
         });
         if (existeMatch) return { success: false, status: 400, message: 'Ya existe un match con esta mascota.' };
 
-        // 3. Crear Match y Notificación (Transaccional)
+        const adoptante = await prisma.adoptante.findUnique({
+            where: { id_usuario: idAdoptante },
+            include: { adoptante_tag: { include: { opcion_tag: true } } }
+        });
+        const tagsConfig = await prisma.tag.findMany({ where: { estado: 'activo' } });
+
+        const { porcentaje } = calcularPuntajeMatch(adoptante, mascota, tagsConfig);
+
         return await prisma.$transaction(async (tx) => {
             const nuevoMatch = await tx.match.create({
                 data: {
                     id_adoptante: idAdoptante,
                     id_mascota: idMascota,
-                    estado: 'pendiente'
+                    estado: 'pendiente',
+                    puntaje: porcentaje
                 }
             });
 
@@ -195,17 +206,15 @@ const registrarDescarte = async (idAdoptante, idMascota) => {
 };
 
 /**
- * Deshace la última acción (Match o Descarte)
+ * Deshace la última acción
  */
 const deshacerUltimaAccion = async (idAdoptante) => {
     try {
-        // Buscar último Match
         const ultimoMatch = await prisma.match.findFirst({
             where: { id_adoptante: idAdoptante },
             orderBy: { fecha: 'desc' }
         });
 
-        // Buscar último Descarte
         const ultimoDescarte = await prisma.descarte.findFirst({
             where: { id_adoptante: idAdoptante },
             orderBy: { fecha: 'desc' }
