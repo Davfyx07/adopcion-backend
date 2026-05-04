@@ -1,3 +1,13 @@
+// Cargar variables de entorno
+require('dotenv').config();
+
+// Debug: verificar que se cargaron
+console.log('🔍 Environment check:', {
+  NODE_ENV: process.env.NODE_ENV,
+  SEED_PASSWORD: process.env.SEED_PASSWORD ? '✅ Set' : '❌ Missing',
+  DATABASE_URL: process.env.DATABASE_URL ? '✅ Set' : '❌ Missing'
+});
+
 const bcrypt = require('bcrypt');
 const prisma = require('../src/config/prisma');
 
