@@ -52,6 +52,7 @@ const albergueRoutes = require('./routes/albergueRoutes');
 const mascotaRoutes = require('./routes/mascotaRoutes');
 const tagRoutes = require('./routes/tagRoutes');
 const notificacionRoutes = require('./routes/notificacionRoutes');
+const matchRoutes = require('./routes/matchRoutes');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/adoptante', adoptanteRoutes);
@@ -60,6 +61,7 @@ app.use('/api/albergue', albergueRoutes);
 app.use('/api/mascotas', mascotaRoutes);
 app.use('/api', tagRoutes);
 app.use('/api/notificaciones', notificacionRoutes);
+app.use('/api/match', matchRoutes);
 
 app.get('/health', (_, res) => res.json({ success: true }));
 
