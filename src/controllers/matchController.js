@@ -2,7 +2,7 @@ const matchService = require('../services/matchService');
 
 const calcularMatch = async (req, res) => {
     try {
-        const idAdoptante = parseInt(req.params.id_adoptante);
+        const idAdoptante = req.user.id;
         const resultados = await matchService.calcularCompatibilidad(idAdoptante);
 
         return res.status(200).json({

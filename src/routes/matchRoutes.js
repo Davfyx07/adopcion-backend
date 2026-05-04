@@ -14,23 +14,16 @@ const matchController = require('../controllers/matchController');
 
 /**
  * @swagger
- * /api/match/calcular/{id_adoptante}:
+ * /api/match/calcular:
  *   post:
- *     summary: Calcular compatibilidad para un adoptante
+ *     summary: Calcular compatibilidad para el adoptante autenticado
  *     description: >
- *       Ejecuta el algoritmo de matching ponderado para el adoptante especificado.
+ *       Ejecuta el algoritmo de matching ponderado para el adoptante autenticado.
  *       Limpia matches previos en estado 'pendiente' y persiste los nuevos resultados
  *       que superen el umbral del 30% de compatibilidad.
  *     tags: [Match]
  *     security:
  *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id_adoptante
- *         required: true
- *         schema:
- *           type: integer
- *         description: ID del adoptante
  *     responses:
  *       200:
  *         description: Lista de mascotas ordenada por compatibilidad descendente
@@ -77,13 +70,13 @@ const matchController = require('../controllers/matchController');
  *       401:
  *         description: Token requerido o inválido
  *       403:
- *         description: No autorizado para calcular matching
+ *         description: El usuario no tiene rol adoptante
  *       500:
  *         description: Error interno al calcular compatibilidad
  */
-router.post('/calcular/:id_adoptante',
+router.post('/calcular',
     authMiddleware,
-    authorizeRole(['admin']),
+    authorizeRole(['adoptante']),
     matchController.calcularMatch
 );
 
