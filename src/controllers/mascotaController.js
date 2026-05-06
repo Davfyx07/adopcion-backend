@@ -1,18 +1,13 @@
 const mascotaService = require('../services/mascotaService');
 
-/**
- * @desc    Registrar una nueva mascota con etiquetas y fotos
- * @route   POST /api/pets
- * @access  Private (Sólo Albergue)
- */
 const crearMascota = async (req, res) => {
     try {
-        const authUserId = req.user.id; // Del authMiddleware
+        const authUserId = req.user.id;
         const clientIp = req.socket.remoteAddress || req.ip;
 
         const result = await mascotaService.crearMascota(
-            authUserId,   // El ID del albergue es el mismo ID del usuario
-            authUserId,   // ID del autor (para auditoría)
+            authUserId,
+            authUserId,
             req.body,
             clientIp
         );
@@ -23,26 +18,20 @@ const crearMascota = async (req, res) => {
             data: result
         });
     } catch (error) {
-        console.error('[mascotaController] Error en crearMascota:', error);
+        console.error('[mascotaController] Error en crearMascota:', error.message, error.stack);
         if (error.message.includes('tagsIds proporcionados no son válidos')) {
             return res.status(400).json({ success: false, message: error.message });
         }
         return res.status(500).json({
             success: false,
-            message: 'Error interno del servidor al publicar la mascota.'
+            message: 'Error interno del servidor al publicar la mascota: ' + error.message
         });
     }
 };
 
-/**
- * @desc    Obtener vista previa de una mascota por su ID
- * @route   GET /api/pets/:id
- * @access  Public
- */
 const previsualizarMascota = async (req, res) => {
     try {
-        const { id } = req.params;
-
+        const id = parseInt(req.params.id);
         const mascota = await mascotaService.obtenerMascotaPorId(id);
 
         if (!mascota) {
@@ -52,13 +41,9 @@ const previsualizarMascota = async (req, res) => {
             });
         }
 
-        return res.status(200).json({
-            success: true,
-            data: mascota
-        });
+        return res.status(200).json({ success: true, data: mascota });
     } catch (error) {
         console.error('[mascotaController] Error en previsualizarMascota:', error);
-        // Si el UUID es inválido en postgres, lanzará un error de sintaxis que capturaremos
         if (error.code === '22P02') {
             return res.status(400).json({ success: false, message: 'ID de mascota inválido.' });
         }
@@ -69,4 +54,167 @@ const previsualizarMascota = async (req, res) => {
     }
 };
 
-module.exports = { crearMascota, previsualizarMascota };
+const actualizarMascotaController = async (req, res) => {
+    try {
+        const id = parseInt(req.params.id);
+        const id_albergue = req.user.id;
+        const ip = req.socket.remoteAddress || req.ip;
+
+        const result = await mascotaService.actualizarMascota({
+            id_mascota: id,
+            id_albergue,
+            data: req.body,
+            ip
+        });
+
+        if (!result.success) {
+            return res.status(result.status).json(result);
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: 'Mascota actualizada exitosamente.',
+            data: result.data
+        });
+    } catch (error) {
+        console.error('[mascotaController] Error en actualizarMascotaController:', error);
+        return res.status(500).json({ success: false, message: 'Error al actualizar la mascota.' });
+    }
+};
+
+const cambiarEstado = async (req, res) => {
+    try {
+        const id = parseInt(req.params.id);
+        const { estado, motivo } = req.body;
+        const authUserId = req.user.id;
+        const clientIp = req.socket.remoteAddress || req.ip;
+
+        const result = await mascotaService.cambiarEstadoMascota(
+            id,
+            authUserId,
+            estado,
+            motivo,
+            clientIp
+        );
+
+        return res.status(200).json({
+            success: true,
+            message: 'Estado de la mascota actualizado correctamente.',
+            data: result
+        });
+    } catch (error) {
+        console.error('[mascotaController] Error en cambiarEstado:', error);
+
+        if (error.message.includes('No encontrada') || error.message.includes('No tienes permiso')) {
+            return res.status(404).json({ success: false, message: error.message });
+        }
+
+        if (error.message.includes('Transición de estado no permitida')) {
+            return res.status(400).json({ success: false, message: error.message });
+        }
+
+        if (error.code === '22P02') {
+            return res.status(400).json({ success: false, message: 'ID de mascota inválido.' });
+        }
+
+        return res.status(500).json({
+            success: false,
+            message: 'Error interno del servidor al cambiar el estado de la mascota.'
+        });
+    }
+};
+
+const feed = async (req, res) => {
+    try {
+        const { tipo, tamaño, edad, ciudad, page, limit } = req.query;
+        const result = await mascotaService.listarFeed({ tipo, tamaño, edad, ciudad, page, limit });
+
+        return res.status(200).json({
+            success: true,
+            data: result.data,
+            meta: result.meta
+        });
+    } catch (error) {
+        console.error('[mascotaController] Error en feed:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Error interno del servidor al obtener el feed de mascotas.'
+        });
+    }
+};
+
+const match = async (req, res) => {
+    try {
+        const idAdoptante = req.user.id;
+        const result = await mascotaService.calcularCompatibilidad(idAdoptante);
+
+        return res.status(200).json({
+            success: true,
+            data: result
+        });
+    } catch (error) {
+        console.error('[mascotaController] Error en match:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Error interno del servidor al calcular compatibilidad.'
+        });
+    }
+};
+
+const misMascotas = async (req, res) => {
+    try {
+        const idAlbergue = req.user.id;
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const result = await mascotaService.listarMisMascotas(idAlbergue, { page, limit });
+
+        return res.status(200).json({
+            success: true,
+            data: result.data,
+            meta: result.meta
+        });
+    } catch (error) {
+        console.error('[mascotaController] Error en misMascotas:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Error interno del servidor al obtener tus mascotas.'
+        });
+    }
+};
+
+const eliminarMascotaController = async (req, res) => {
+    try {
+        const id = parseInt(req.params.id);
+        const idAlbergue = req.user.id;
+        const { motivo } = req.body;
+        console.log('[DELETE DEBUG] id:', id, 'idAlbergue:', idAlbergue, 'motivo:', motivo);
+
+        const result = await mascotaService.eliminarMascota(id, idAlbergue, motivo);
+
+        if (!result.success) {
+            return res.status(result.status).json(result);
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: result.message
+        });
+    } catch (error) {
+        console.error('[mascotaController] Error en eliminarMascotaController:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Error interno del servidor al eliminar la mascota.'
+        });
+    }
+};
+
+module.exports = {
+    crearMascota,
+    previsualizarMascota,
+    actualizarMascotaController,
+    cambiarEstado,
+    feed,
+    match,
+    misMascotas,
+    eliminarMascotaController
+};
