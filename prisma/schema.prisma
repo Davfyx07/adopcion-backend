@@ -7,102 +7,92 @@ datasource db {
   provider = "postgresql"
 }
 
-// ──────────────────────────────────────────────
-// MODELS
-// ──────────────────────────────────────────────
-
 model Usuario {
-  id_usuario        Int                     @id @default(autoincrement())
-  correo            String                  @unique @db.VarChar(150)
-  password_hash     String
-  id_rol            Int
-  estado_cuenta     String           @default("perfil_incompleto")
-  fecha_registro    DateTime?               @default(now()) @db.Timestamptz(6)
-  ip_registro       String?                 @db.VarChar(45)
-  intentos_fallidos Int?                    @default(0)
-  bloqueado_hasta   DateTime?               @db.Timestamptz(6)
-  deleted_at        DateTime?               @db.Timestamptz(6)
-  updated_at        DateTime?               @default(now()) @db.Timestamptz(6)
-
+  id_usuario            String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  correo                String                 @unique @db.VarChar(255)
+  password_hash         String
+  id_rol                String                 @db.Uuid
+  estado_cuenta         String?                @default("perfil_incompleto") @db.VarChar(30)
+  intentos_fallidos     Int?                   @default(0)
+  bloqueado_hasta       DateTime?              @db.Timestamptz(6)
+  fecha_registro        DateTime?              @default(now()) @db.Timestamptz(6)
+  ip_registro           String?                @db.Inet
+  deleted_at            DateTime?              @db.Timestamptz(6)
+  updated_at            DateTime?              @default(now()) @db.Timestamptz(6)
   adoptante             Adoptante?
   albergue              Albergue?
+  log_auditoria         LogAuditoria[]
   notificacion          Notificacion[]
   recuperacion_password RecuperacionPassword[]
-  termino_aceptado      TerminoAceptado[]
-  rol                   Rol                   @relation(fields: [id_rol], references: [id_rol], onDelete: NoAction, onUpdate: NoAction)
-  log_auditoria         LogAuditoria[]        // escritos por el usuario como autor
+  termino_aceptado      TerminoAceptado?
+  rol                   Rol                    @relation(fields: [id_rol], references: [id_rol], onDelete: NoAction, onUpdate: NoAction)
 
-  @@index([correo], map: "idx_usuario_correo")
-  @@index([estado_cuenta], map: "idx_usuario_estado_cuenta")
-  @@index([fecha_registro], map: "idx_usuario_fecha_registro")
+  @@index([estado_cuenta], map: "idx_usuario_estado")
+  @@index([fecha_registro], map: "idx_usuario_fecha_reg")
   @@map("usuario")
 }
 
 model Rol {
-  id_rol    Int       @id @default(autoincrement())
-  nombre_rol String   @unique @db.VarChar(50)
-  usuario   Usuario[]
+  id_rol      String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nombre_rol  String    @unique @db.VarChar(50)
+  descripcion String?
+  usuario     Usuario[]
 
   @@map("rol")
 }
 
 model Adoptante {
-  id_usuario         Int             @id
-  nombre_completo    String?         @db.VarChar(150)
-  whatsapp_adoptante String?         @db.VarChar(20)
-  ciudad             String?         @db.VarChar(100)
-  direccion          String?
+  id_usuario         String              @id @db.Uuid
+  nombre_completo    String              @db.VarChar(150)
   foto_perfil        String?
-  embedding          String?         // text — no pgvector instalado en esta BD
-  deleted_at         DateTime?       @db.Timestamptz(6)
-  updated_at         DateTime?       @default(now()) @db.Timestamptz(6)
+  whatsapp_adoptante String?             @db.VarChar(20)
+  ciudad             String?             @default("Neiva") @db.VarChar(100)
+  updated_at         DateTime?           @default(now()) @db.Timestamptz(6)
+  adopcion           Adopcion[]
+  usuario            Usuario             @relation(fields: [id_usuario], references: [id_usuario], onDelete: NoAction, onUpdate: NoAction)
+  adoptante_tag      AdoptanteTag[]
+  contacto_whatsapp  contacto_whatsapp[]
+  match              Match[]
 
-  usuario       Usuario        @relation(fields: [id_usuario], references: [id_usuario], onDelete: Cascade, onUpdate: NoAction)
-  adopcion      Adopcion[]
-  adoptante_tag AdoptanteTag[]
-  descarte      Descarte[]
-  match         Match[]
-
+  @@index([ciudad], map: "idx_adoptante_ciudad")
   @@map("adoptante")
 }
 
 model Albergue {
-  id_usuario      Int     @id
-  nit             String  @unique @db.VarChar(50)
-  nombre_albergue String? @db.VarChar(150)
-  logo            String?
-  descripcion     String?
-  whatsapp_actual String? @db.VarChar(20)
-  sitio_web       String? @db.VarChar(255)
-  deleted_at      DateTime? @db.Timestamptz(6)
-  updated_at      DateTime? @default(now()) @db.Timestamptz(6)
-
-  usuario                     Usuario                      @relation(fields: [id_usuario], references: [id_usuario], onDelete: Cascade, onUpdate: NoAction)
+  id_usuario                  String                      @id @db.Uuid
+  nit                         String                      @unique @db.VarChar(20)
+  nombre_albergue             String                      @db.VarChar(150)
+  logo                        String?
+  descripcion                 String?
+  whatsapp_actual             String?                     @db.VarChar(20)
+  sitio_web                   String?
+  updated_at                  DateTime?                   @default(now()) @db.Timestamptz(6)
+  adopcion                    Adopcion[]
+  usuario                     Usuario                     @relation(fields: [id_usuario], references: [id_usuario], onDelete: NoAction, onUpdate: NoAction)
+  contacto_whatsapp           contacto_whatsapp[]
   historial_whatsapp_albergue HistorialWhatsappAlbergue[]
   mascota                     Mascota[]
 
+  @@index([nombre_albergue], map: "idx_albergue_nombre")
   @@map("albergue")
 }
 
 model Mascota {
-  id_mascota         Int            @id @default(autoincrement())
-  id_albergue        Int
-  nombre             String?        @db.VarChar(100)
+  id_mascota         String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id_albergue        String              @db.Uuid
+  nombre             String              @db.VarChar(100)
   descripcion        String?
-  estado_adopcion    String  @default("disponible")
-  fecha_publicacion  DateTime?      @default(now()) @db.Timestamptz(6)
-  embedding          String?        // text — no pgvector instalado en esta BD
-  deleted_at         DateTime?      @db.Timestamptz(6)
-  updated_at         DateTime?      @default(now()) @db.Timestamptz(6)
+  estado_adopcion    String?             @default("disponible") @db.VarChar(30)
+  fecha_publicacion  DateTime?           @default(now()) @db.Timestamptz(6)
   motivo_eliminacion String?
-  motivo_moderacion  String?
-
-  adopcion    Adopcion[]
-  descarte    Descarte[]
-  albergue    Albergue    @relation(fields: [id_albergue], references: [id_usuario], onDelete: Cascade, onUpdate: NoAction)
-  mascota_foto MascotaFoto[]
-  mascota_tag  MascotaTag[]
-  match        Match[]
+  deleted_at         DateTime?           @db.Timestamptz(6)
+  updated_at         DateTime?           @default(now()) @db.Timestamptz(6)
+  adopcion           Adopcion[]
+  contacto_whatsapp  contacto_whatsapp[]
+  albergue           Albergue            @relation(fields: [id_albergue], references: [id_usuario], onDelete: NoAction, onUpdate: NoAction)
+  mascota_foto       MascotaFoto[]
+  mascota_tag        MascotaTag[]
+  match              Match[]
 
   @@index([id_albergue], map: "idx_mascota_albergue")
   @@index([estado_adopcion], map: "idx_mascota_estado")
@@ -111,223 +101,193 @@ model Mascota {
 }
 
 model MascotaFoto {
-  id_foto    Int     @id @default(autoincrement())
-  id_mascota Int
+  id_foto    String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id_mascota String  @db.Uuid
   url_foto   String
-  orden      Int?
+  orden      Int?    @default(0)
+  mascota    Mascota @relation(fields: [id_mascota], references: [id_mascota], onDelete: Cascade, onUpdate: NoAction)
 
-  mascota Mascota @relation(fields: [id_mascota], references: [id_mascota], onDelete: Cascade, onUpdate: NoAction)
-
+  @@index([id_mascota, orden], map: "idx_mascota_foto_rel")
   @@map("mascota_foto")
 }
 
 model Tag {
-  id_tag             Int       @id @default(autoincrement())
-  nombre_tag         String    @unique @db.VarChar(100)
-  categoria          String?   @default("General") @db.VarChar(50)
-  peso_matching      Decimal?  @default(0) @db.Decimal(5, 2)
-  estado             String?   @default("activo") @db.VarChar(20)
-  es_filtro_absoluto Boolean?  @default(false)
-  descripcion        String?
-  updated_at         DateTime? @default(now()) @db.Timestamptz(6)
+  id_tag             String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nombre_tag         String      @db.VarChar(100)
+  categoria          String      @default("General") @db.VarChar(50)
+  peso_matching      Decimal?    @default(0) @db.Decimal(5, 2)
+  es_filtro_absoluto Boolean?    @default(false)
+  estado             String?     @default("activo") @db.VarChar(20)
+  updated_at         DateTime?   @default(now()) @db.Timestamptz(6)
+  opcion_tag         OpcionTag[]
 
-  opcion_tag OpcionTag[]
-
-  @@index([estado], map: "idx_tag_estado")
   @@map("tag")
 }
 
 model OpcionTag {
-  id_opcion Int     @id @default(autoincrement())
-  id_tag    Int
-  valor     String? @db.VarChar(100)
-  estado    String? @default("activo") @db.VarChar(20)
-
-  tag           Tag           @relation(fields: [id_tag], references: [id_tag], onDelete: Cascade, onUpdate: NoAction)
+  id_opcion     String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id_tag        String         @db.Uuid
+  valor         String         @db.VarChar(100)
+  updated_at    DateTime?      @default(now()) @db.Timestamptz(6)
   adoptante_tag AdoptanteTag[]
   mascota_tag   MascotaTag[]
+  tag           Tag            @relation(fields: [id_tag], references: [id_tag], onDelete: Cascade, onUpdate: NoAction)
 
+  @@index([id_tag], map: "idx_opcion_tag_parent")
   @@map("opcion_tag")
 }
 
 model MascotaTag {
-  id_mascota Int
-  id_opcion  Int
-
-  mascota    Mascota    @relation(fields: [id_mascota], references: [id_mascota], onDelete: Cascade, onUpdate: NoAction)
-  opcion_tag OpcionTag  @relation(fields: [id_opcion], references: [id_opcion], onDelete: Cascade, onUpdate: NoAction)
+  id_mascota String    @db.Uuid
+  id_opcion  String    @db.Uuid
+  mascota    Mascota   @relation(fields: [id_mascota], references: [id_mascota], onDelete: NoAction, onUpdate: NoAction)
+  opcion_tag OpcionTag @relation(fields: [id_opcion], references: [id_opcion], onDelete: NoAction, onUpdate: NoAction)
 
   @@id([id_mascota, id_opcion])
+  @@index([id_opcion], map: "idx_mascota_tag_opcion")
   @@map("mascota_tag")
 }
 
 model AdoptanteTag {
-  id_usuario Int
-  id_opcion  Int
-
-  opcion_tag OpcionTag @relation(fields: [id_opcion], references: [id_opcion], onDelete: Cascade, onUpdate: NoAction)
-  adoptante  Adoptante @relation(fields: [id_usuario], references: [id_usuario], onDelete: Cascade, onUpdate: NoAction)
+  id_usuario String    @db.Uuid
+  id_opcion  String    @db.Uuid
+  opcion_tag OpcionTag @relation(fields: [id_opcion], references: [id_opcion], onDelete: NoAction, onUpdate: NoAction)
+  adoptante  Adoptante @relation(fields: [id_usuario], references: [id_usuario], onDelete: NoAction, onUpdate: NoAction)
 
   @@id([id_usuario, id_opcion])
+  @@index([id_opcion], map: "idx_adoptante_tag_opcion")
   @@map("adoptante_tag")
 }
 
 model Match {
-  id_match     Int         @id @default(autoincrement())
-  id_adoptante Int
-  id_mascota   Int
-  puntaje      Decimal?    @db.Decimal(5, 2)
-  estado       String @default("pendiente")
-  fecha        DateTime?   @default(now()) @db.Timestamptz(6)
-
-  adoptante Adoptante @relation(fields: [id_adoptante], references: [id_usuario], onDelete: Cascade, onUpdate: NoAction)
-  mascota   Mascota   @relation(fields: [id_mascota], references: [id_mascota], onDelete: Cascade, onUpdate: NoAction)
+  id_match             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id_adoptante         String    @db.Uuid
+  id_mascota           String    @db.Uuid
+  tipo_interaccion     String    @db.VarChar(15)
+  score_compatibilidad Decimal?  @db.Decimal(5, 2)
+  fecha_match          DateTime? @default(now()) @db.Timestamptz(6)
+  adoptante            Adoptante @relation(fields: [id_adoptante], references: [id_usuario], onDelete: NoAction, onUpdate: NoAction)
+  mascota              Mascota   @relation(fields: [id_mascota], references: [id_mascota], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([id_adoptante], map: "idx_match_adoptante")
-  @@index([estado], map: "idx_match_estado")
-  @@index([fecha], map: "idx_match_fecha")
   @@index([id_mascota], map: "idx_match_mascota")
+  @@index([tipo_interaccion], map: "idx_match_tipo")
   @@map("match")
 }
 
 model Adopcion {
-  id_adopcion               Int            @id @default(autoincrement())
-  id_mascota                Int
-  id_adoptante              Int
-  fecha                     DateTime?      @default(now()) @db.Timestamptz(6)
-  estado                    String @default("en_proceso")
-  observaciones             String?
-  fecha_match               DateTime?     @db.Timestamptz(6)
-  fecha_contacto            DateTime?     @db.Timestamptz(6)
-  porcentaje_compatibilidad Decimal?      @db.Decimal(5, 2)
+  id_adopcion    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id_mascota     String    @db.Uuid
+  id_adoptante   String    @db.Uuid
+  id_albergue    String    @db.Uuid
+  fecha_adopcion DateTime? @default(now()) @db.Timestamptz(6)
+  score_final    Decimal?  @db.Decimal(5, 2)
+  estado_proceso String?   @default("completada") @db.VarChar(20)
+  adoptante      Adoptante @relation(fields: [id_adoptante], references: [id_usuario], onDelete: NoAction, onUpdate: NoAction)
+  albergue       Albergue  @relation(fields: [id_albergue], references: [id_usuario], onDelete: NoAction, onUpdate: NoAction)
+  mascota        Mascota   @relation(fields: [id_mascota], references: [id_mascota], onDelete: NoAction, onUpdate: NoAction)
 
-  adoptante Adoptante @relation(fields: [id_adoptante], references: [id_usuario], onDelete: Cascade, onUpdate: NoAction)
-  mascota   Mascota   @relation(fields: [id_mascota], references: [id_mascota], onDelete: Cascade, onUpdate: NoAction)
-
-  @@index([estado], map: "idx_adopcion_estado")
-  @@index([fecha], map: "idx_adopcion_fecha")
+  @@index([fecha_adopcion], map: "idx_adopcion_fecha")
+  @@index([id_albergue], map: "idx_adopcion_albergue")
   @@map("adopcion")
 }
 
-model Descarte {
-  id_adoptante Int
-  id_mascota   Int
-  fecha        DateTime? @default(now()) @db.Timestamptz(6)
-
-  adoptante Adoptante @relation(fields: [id_adoptante], references: [id_usuario], onDelete: Cascade, onUpdate: NoAction)
-  mascota   Mascota   @relation(fields: [id_mascota], references: [id_mascota], onDelete: Cascade, onUpdate: NoAction)
-
-  @@id([id_adoptante, id_mascota])
-  @@index([id_adoptante], map: "idx_descarte_adoptante")
-  @@map("descarte")
-}
-
 model Notificacion {
-  id                 Int                @id @default(autoincrement())
-  id_usuario         Int
-  tipo_notificacion  String?            @db.VarChar(50)
-  mensaje            String?
-  estado             String @default("pendiente")
-  fecha_creacion     DateTime?          @default(now()) @db.Timestamptz(6)
-  fecha_lectura      DateTime?          @db.Timestamptz(6)
-  recurso_tipo       String?            @db.VarChar(50)
-  recurso_id         Int?
+  id_notificacion   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id_usuario        String    @db.Uuid
+  tipo_notificacion String?   @db.VarChar(50)
+  mensaje           String?
+  leida             Boolean?  @default(false)
+  recurso_id        String?   @db.Uuid
+  fecha_hora        DateTime? @default(now()) @db.Timestamptz(6)
+  usuario           Usuario   @relation(fields: [id_usuario], references: [id_usuario], onDelete: NoAction, onUpdate: NoAction)
 
-  usuario          Usuario            @relation(fields: [id_usuario], references: [id_usuario], onDelete: Cascade, onUpdate: NoAction)
-  envio_notificacion EnvioNotificacion[]
-
-  @@index([estado], map: "idx_notificacion_estado")
-  @@index([fecha_creacion], map: "idx_notificacion_fecha")
-  @@index([id_usuario], map: "idx_notificacion_usuario")
+  @@index([fecha_hora(sort: Desc)], map: "idx_notificacion_fecha")
+  @@index([id_usuario, leida], map: "idx_notificacion_usuario_leida")
   @@map("notificacion")
 }
 
-model EnvioNotificacion {
-  id                        Int          @id @default(autoincrement())
-  id_notificacion           Int
-  canal                     String?      @db.VarChar(50)
-  intento                   Int?         @default(1)
-  estado                    String?      @db.VarChar(20)
-  ts_evento_contacto        DateTime?    @default(now()) @db.Timestamptz(6)
-  ts_notificacion_entregada DateTime?    @db.Timestamptz(6)
-  error                     String?
-
-  notificacion Notificacion @relation(fields: [id_notificacion], references: [id], onDelete: Cascade, onUpdate: NoAction)
-
-  @@map("envio_notificacion")
-}
-
 model RecuperacionPassword {
-  id_token         Int        @id @default(autoincrement())
-  id_usuario       Int
+  id_token         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id_usuario       String    @db.Uuid
   token_hash       String
-  fecha_expiracion DateTime   @db.Timestamptz(6)
-  usado            Boolean?   @default(false)
-  estado           String?    @default("activo") @db.VarChar(20)
+  fecha_expiracion DateTime  @db.Timestamptz(6)
+  estado           String?   @default("activo") @db.VarChar(20)
+  fecha_creacion   DateTime? @default(now()) @db.Timestamptz(6)
+  usuario          Usuario   @relation(fields: [id_usuario], references: [id_usuario], onDelete: Cascade, onUpdate: NoAction)
 
-  usuario Usuario @relation(fields: [id_usuario], references: [id_usuario], onDelete: Cascade, onUpdate: NoAction)
-
+  @@index([id_usuario], map: "idx_recuperacion_usuario")
   @@map("recuperacion_password")
 }
 
 model BlacklistToken {
-  id               Int      @id @default(autoincrement())
-  token_hash       String
+  token_hash       String   @id
   fecha_expiracion DateTime @db.Timestamptz(6)
 
-  @@index([token_hash], map: "idx_blacklist_token")
+  @@index([fecha_expiracion], map: "idx_blacklist_expiracion")
   @@map("blacklist_token")
 }
 
 model TerminoAceptado {
-  id                    Int       @id @default(autoincrement())
-  id_usuario            Int
-  version_documento     String?   @db.VarChar(20)
-  ip_aceptacion         String?   @db.VarChar(45)
+  id_usuario            String    @id @db.Uuid
+  version_documento     String    @db.VarChar(20)
   fecha_hora_aceptacion DateTime? @default(now()) @db.Timestamptz(6)
-
-  usuario Usuario @relation(fields: [id_usuario], references: [id_usuario], onDelete: Cascade, onUpdate: NoAction)
+  ip_aceptacion         String?   @db.Inet
+  usuario               Usuario   @relation(fields: [id_usuario], references: [id_usuario], onDelete: NoAction, onUpdate: NoAction)
 
   @@map("termino_aceptado")
 }
 
 model HistorialWhatsappAlbergue {
-  id              Int       @id @default(autoincrement())
-  id_albergue     Int
-  numero_whatsapp String?   @db.VarChar(20)
-  fecha_inicio    DateTime? @db.Timestamptz(6)
+  id_historial    Int       @id @default(autoincrement())
+  id_albergue     String    @db.Uuid
+  numero_whatsapp String    @db.VarChar(20)
+  fecha_inicio    DateTime? @default(now()) @db.Timestamptz(6)
   fecha_fin       DateTime? @db.Timestamptz(6)
-
-  albergue Albergue @relation(fields: [id_albergue], references: [id_usuario], onDelete: Cascade, onUpdate: NoAction)
+  albergue        Albergue  @relation(fields: [id_albergue], references: [id_usuario], onDelete: NoAction, onUpdate: NoAction)
 
   @@map("historial_whatsapp_albergue")
 }
 
 model ConfiguracionSistema {
-  id          Int      @id @default(autoincrement())
-  clave       String   @unique @db.VarChar(100)
-  valor       String
-  descripcion String?
-  grupo       String?  @db.VarChar(50)
-  valor_min   String?
-  valor_max   String?
-  es_critico  Boolean? @default(false)
+  id_config  Int      @id @default(autoincrement())
+  clave      String   @unique @db.VarChar(100)
+  valor      String
+  grupo      String?  @db.VarChar(50)
+  es_critico Boolean? @default(false)
 
   @@map("configuracion_sistema")
 }
 
 model LogAuditoria {
-  id                   Int       @id @default(autoincrement())
-  id_autor             Int?
+  id_log               Int       @id @default(autoincrement())
+  id_autor             String?   @db.Uuid
   accion               String?   @db.VarChar(100)
   entidad_afectada     String?   @db.VarChar(100)
-  id_registro_afectado Int?
-  ip                   String?   @db.VarChar(45)
+  id_registro_afectado String?   @db.Uuid
+  valor_anterior       Json?
+  valor_nuevo          Json?
+  motivo               String?
+  ip                   String?   @db.Inet
   fecha                DateTime? @default(now()) @db.Timestamptz(6)
-  valor_anterior       String?
-  valor_nuevo          String?
+  usuario              Usuario?  @relation(fields: [id_autor], references: [id_usuario], onDelete: NoAction, onUpdate: NoAction)
 
-  usuario Usuario? @relation(fields: [id_autor], references: [id_usuario], onDelete: NoAction, onUpdate: NoAction)
-
+  @@index([id_autor], map: "idx_log_autor")
+  @@index([entidad_afectada, id_registro_afectado], map: "idx_log_entidad")
+  @@index([fecha(sort: Desc)], map: "idx_log_fecha")
   @@map("log_auditoria")
+}
+
+model contacto_whatsapp {
+  id_contacto  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id_albergue  String    @db.Uuid
+  id_adoptante String    @db.Uuid
+  id_mascota   String    @db.Uuid
+  fecha_hora   DateTime? @default(now()) @db.Timestamptz(6)
+  adoptante    Adoptante @relation(fields: [id_adoptante], references: [id_usuario], onDelete: NoAction, onUpdate: NoAction)
+  albergue     Albergue  @relation(fields: [id_albergue], references: [id_usuario], onDelete: NoAction, onUpdate: NoAction)
+  mascota      Mascota   @relation(fields: [id_mascota], references: [id_mascota], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([id_albergue], map: "idx_contacto_albergue")
+  @@index([id_mascota], map: "idx_contacto_mascota")
 }
