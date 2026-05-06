@@ -13,7 +13,10 @@ if (!connectionString) {
     throw new Error('Falta DATABASE_URL o DB_HOST para conectar Prisma a PostgreSQL.');
 }
 
-const adapter = new PrismaPg({ connectionString });
+const adapter = new PrismaPg({
+  connectionString,
+  schema: 'public',
+});
 
 const basePrisma = new PrismaClient({
   adapter,
