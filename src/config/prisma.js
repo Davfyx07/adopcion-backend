@@ -4,9 +4,16 @@ const { PrismaPg } = require('@prisma/adapter-pg');
 // ──────────────────────────────────────────────
 // Base PrismaClient
 // Prisma 7 requiere un driver adapter.
-// Usa DATABASE_URL directamente — una sola variable de entorno.
+// Acepta DATABASE_URL como variable principal y DB_HOST como respaldo
+// para mantener compatibilidad con el .env actual del proyecto.
 // ──────────────────────────────────────────────
-const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
+const connectionString = process.env.DATABASE_URL || process.env.DB_HOST;
+
+if (!connectionString) {
+    throw new Error('Falta DATABASE_URL o DB_HOST para conectar Prisma a PostgreSQL.');
+}
+
+const adapter = new PrismaPg({ connectionString });
 
 const basePrisma = new PrismaClient({
   adapter,
