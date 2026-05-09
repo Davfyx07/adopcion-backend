@@ -173,4 +173,60 @@ router.post('/descartar/:id_mascota',
     matchController.descartarMascota
 );
 
+/**
+ * @swagger
+ * /api/match/{id_match}/contact:
+ *   post:
+ *     summary: Contactar al adoptante por WhatsApp
+ *     description: >
+ *       Registra el evento de contacto, actualiza el estado del match a 'contactado',
+ *       notifica al adoptante y retorna el enlace predefinido de WhatsApp Web/App.
+ *       Requiere rol de 'albergue' y que el match pertenezca a una mascota de este.
+ *     tags: [Match]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id_match
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID del match a contactar
+ *     responses:
+ *       200:
+ *         description: Enlace de WhatsApp generado y match actualizado
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     enlace_whatsapp:
+ *                       type: string
+ *                       example: "https://wa.me/573001234567?text=%C2%A1Hola..."
+ *                     estado:
+ *                       type: string
+ *                       example: "contactado_actualizado"
+ *       400:
+ *         description: El adoptante no tiene un número de WhatsApp registrado
+ *       401:
+ *         description: Token requerido o inválido
+ *       403:
+ *         description: El usuario no tiene rol albergue o no es dueño de la mascota
+ *       404:
+ *         description: Match no encontrado
+ *       500:
+ *         description: Error interno del servidor
+ */
+router.post('/:id_match/contact',
+    authMiddleware,
+    authorizeRole(['albergue']),
+    matchController.contactarAdoptante
+);
+
 module.exports = router;

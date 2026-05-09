@@ -378,10 +378,96 @@ const descartarMascota = async (idAdoptante, idMascota) => {
     }
 };
 
+const contactarAdoptante = async (idAlbergue, idMatch) => {
+    try {
+        return await prisma.$transaction(async (tx) => {
+            // 1. Buscar match e incluir relaciones necesarias
+            const match = await tx.match.findUnique({
+                where: { id_match: idMatch },
+                include: {
+                    mascota: { select: { nombre: true, id_albergue: true } },
+                    adoptante: { select: { nombre_completo: true, whatsapp_adoptante: true, id_usuario: true } },
+                }
+            });
+
+            if (!match) {
+                return { success: false, status: 404, message: 'Match no encontrado.' };
+            }
+
+            // 2. Validar que la mascota del match pertenezca al albergue autenticado
+            if (match.mascota.id_albergue !== idAlbergue) {
+                return { success: false, status: 403, message: 'No tienes permiso para contactar este match.' };
+            }
+
+            // 3. Obtener datos del albergue para el mensaje
+            const albergue = await tx.albergue.findUnique({
+                where: { id_usuario: idAlbergue },
+                select: { nombre_albergue: true }
+            });
+
+            // 4. Validar que el adoptante tenga WhatsApp
+            const numWhatsapp = match.adoptante.whatsapp_adoptante;
+            if (!numWhatsapp) {
+                return { success: false, status: 400, message: 'El adoptante no tiene un número de WhatsApp registrado.' };
+            }
+
+            // 5. Verificar si ya fue contactado (previene duplicidad de notificaciones)
+            const yaContactado = match.estado === 'contactado';
+            
+            // Construir mensaje predefinido
+            const nombreAdoptante = match.adoptante.nombre_completo || 'Adoptante';
+            const mensaje = `!Hola ${nombreAdoptante}! Somos ${albergue.nombre_albergue} y vimos que hiciste match con ${match.mascota.nombre}. Nos gustaria conversar contigo sobre el proceso de adopcion.`;
+            const mensajeCodificado = encodeURIComponent(mensaje);
+            // Formatear el numero removiendo '+' y caracteres no numericos, WhatsApp API prefiere solo numeros
+            const numeroFormateado = numWhatsapp.replace(/\D/g, '');
+            const enlaceWhatsapp = `https://wa.me/${numeroFormateado}?text=${mensajeCodificado}`;
+
+            if (!yaContactado) {
+                // Actualizar estado del match
+                await tx.match.update({
+                    where: { id_match: idMatch },
+                    data: { estado: 'contactado' }
+                });
+
+                // Crear notificacion para el adoptante
+                await tx.notificacion.create({
+                    data: {
+                        id_usuario: match.adoptante.id_usuario,
+                        tipo_notificacion: 'contacto_albergue',
+                        mensaje: `El albergue ${albergue.nombre_albergue} ha iniciado el proceso de contacto para la adopcion de ${match.mascota.nombre}. !Revisa tu WhatsApp!`,
+                        recurso_tipo: 'match',
+                        recurso_id: idMatch,
+                    }
+                });
+            }
+
+            // Registrar el evento de contacto en la tabla de auditoría (siempre registra un nuevo enlace generado)
+            await tx.contactoWhatsapp.create({
+                data: {
+                    id_match: idMatch,
+                    id_albergue: idAlbergue
+                }
+            });
+
+            return { 
+                success: true, 
+                data: { 
+                    enlace_whatsapp: enlaceWhatsapp,
+                    estado: yaContactado ? 'contactado' : 'contactado_actualizado'
+                } 
+            };
+        });
+    } catch (err) {
+        console.error('[matchService] contactarAdoptante:', err.message);
+        throw err;
+    }
+};
+
 module.exports = {
     calcularCompatibilidad,
     limpiarMatchesPendientes,
     registrarMatch,
     obtenerMatches,
     descartarMascota,
+    contactarAdoptante,
 };

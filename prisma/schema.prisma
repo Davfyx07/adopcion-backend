@@ -182,12 +182,25 @@ model Match {
 
   adoptante Adoptante @relation(fields: [id_adoptante], references: [id_usuario], onDelete: Cascade, onUpdate: NoAction)
   mascota   Mascota   @relation(fields: [id_mascota], references: [id_mascota], onDelete: Cascade, onUpdate: NoAction)
+  contacto_whatsapp ContactoWhatsapp[]
 
   @@index([id_adoptante], map: "idx_match_adoptante")
   @@index([estado], map: "idx_match_estado")
   @@index([fecha], map: "idx_match_fecha")
   @@index([id_mascota], map: "idx_match_mascota")
   @@map("match")
+}
+
+model ContactoWhatsapp {
+  id_contacto  Int       @id @default(autoincrement())
+  id_match     Int
+  id_albergue  Int
+  fecha_enlace DateTime? @default(now()) @db.Timestamptz(6)
+
+  match    Match    @relation(fields: [id_match], references: [id_match], onDelete: Cascade, onUpdate: NoAction)
+  albergue Albergue @relation(fields: [id_albergue], references: [id_usuario], onDelete: Cascade, onUpdate: NoAction)
+
+  @@map("contacto_whatsapp")
 }
 
 model Adopcion {

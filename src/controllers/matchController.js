@@ -53,8 +53,34 @@ const descartarMascota = async (req, res) => {
     }
 };
 
+const contactarAdoptante = async (req, res) => {
+    try {
+        const idAlbergue = req.user.id;
+        const idMatch = parseInt(req.params.id_match);
+        
+        if (isNaN(idMatch)) {
+            return res.status(400).json({ success: false, message: 'ID de match inválido.' });
+        }
+
+        const result = await matchService.contactarAdoptante(idAlbergue, idMatch);
+
+        if (!result.success) {
+            return res.status(result.status).json(result);
+        }
+
+        return res.status(200).json(result);
+    } catch (error) {
+        console.error('[matchController] Error en contactarAdoptante:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Error interno al procesar el contacto por WhatsApp.',
+        });
+    }
+};
+
 module.exports = {
     calcularMatch,
     obtenerMatches,
     descartarMascota,
+    contactarAdoptante,
 };
