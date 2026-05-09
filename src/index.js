@@ -52,7 +52,11 @@ const albergueRoutes = require('./routes/albergueRoutes');
 const mascotaRoutes = require('./routes/mascotaRoutes');
 const tagRoutes = require('./routes/tagRoutes');
 const notificacionRoutes = require('./routes/notificacionRoutes');
+<<<<<<< feature/HU-MT-02-Gestion-del-feed
 const recomendacionRoutes = require('./routes/recomendacionRoutes');
+=======
+const matchRoutes = require('./routes/matchRoutes');
+>>>>>>> develop
 
 app.use('/api/auth', authRoutes);
 app.use('/api/adoptante', adoptanteRoutes);
@@ -61,7 +65,11 @@ app.use('/api/albergue', albergueRoutes);
 app.use('/api/mascotas', mascotaRoutes);
 app.use('/api', tagRoutes);
 app.use('/api/notificaciones', notificacionRoutes);
+<<<<<<< feature/HU-MT-02-Gestion-del-feed
 app.use('/api/recomendaciones', recomendacionRoutes);
+=======
+app.use('/api/match', matchRoutes);
+>>>>>>> develop
 
 app.get('/health', (_, res) => res.json({ success: true }));
 
