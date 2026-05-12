@@ -57,6 +57,7 @@ const recomendacionRoutes = require('./routes/recomendacionRoutes');
 
 const matchRoutes = require('./routes/matchRoutes');
 const adopcionRoutes = require('./routes/adopcionRoutes');
+const { iniciarJobLimpieza } = require('./jobs/notificacionCleanupJob');
 
 
 app.use('/api/auth', authRoutes);
@@ -72,5 +73,8 @@ app.use('/api/match', matchRoutes);
 app.use('/api/adopciones', adopcionRoutes);
 
 app.get('/health', (_, res) => res.json({ success: true }));
+
+// Iniciar jobs programados
+iniciarJobLimpieza();
 
 app.listen(PORT, () => console.log(`Server corriendo en http://localhost:${PORT}`));
