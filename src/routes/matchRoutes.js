@@ -173,4 +173,34 @@ router.post('/descartar/:id_mascota',
     matchController.descartarMascota
 );
 
+/**
+ * @swagger
+ * /api/match/{id}:
+ *   get:
+ *     summary: Obtener detalle de un match
+ *     description: Retorna el detalle completo de un match perteneciente al adoptante autenticado.
+ *     tags: [Match]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Detalle del match
+ *       404:
+ *         description: Match no encontrado
+ *       403:
+ *         description: No autorizado
+ */
+router.get('/:id',
+    authMiddleware,
+    authorizeRole(['adoptante']),
+    matchController.obtenerDetalleMatch
+);
+
 module.exports = router;
