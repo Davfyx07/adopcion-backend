@@ -116,4 +116,36 @@ router.post(
     adopcionController.registrarAdopcion
 );
 
+/**
+ * @swagger
+ * /api/adopciones/{id}:
+ *   get:
+ *     summary: Obtener detalle de una adopción
+ *     description: Solo el albergue dueño de la mascota puede consultar el detalle.
+ *     tags: [Adopciones]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Detalle de la adopción
+ *       403:
+ *         description: No autorizado
+ *       404:
+ *         description: Adopción no encontrada
+ */
+const { obtenerDetalleAdopcion } = require('../controllers/adopcionHistorialController');
+router.get(
+    '/:id',
+    authMiddleware,
+    authorizeRole(['albergue']),
+    obtenerDetalleAdopcion
+);
+
 module.exports = router;
+

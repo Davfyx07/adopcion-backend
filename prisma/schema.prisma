@@ -1,10 +1,12 @@
 generator client {
-  provider   = "prisma-client-js"
-  engineType = "library"
+  provider        = "prisma-client-js"
+  engineType      = "library"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
-  provider = "postgresql"
+  provider   = "postgresql"
+  extensions = [vector]
 }
 
 // ──────────────────────────────────────────────
@@ -12,25 +14,25 @@ datasource db {
 // ──────────────────────────────────────────────
 
 model Usuario {
-  id_usuario        Int                     @id @default(autoincrement())
-  correo            String                  @unique @db.VarChar(150)
+  id_usuario        Int       @id @default(autoincrement())
+  correo            String    @unique @db.VarChar(150)
   password_hash     String
   id_rol            Int
-  estado_cuenta     String           @default("perfil_incompleto")
-  fecha_registro    DateTime?               @default(now()) @db.Timestamptz(6)
-  ip_registro       String?                 @db.VarChar(45)
-  intentos_fallidos Int?                    @default(0)
-  bloqueado_hasta   DateTime?               @db.Timestamptz(6)
-  deleted_at        DateTime?               @db.Timestamptz(6)
-  updated_at        DateTime?               @default(now()) @db.Timestamptz(6)
+  estado_cuenta     String    @default("perfil_incompleto")
+  fecha_registro    DateTime? @default(now()) @db.Timestamptz(6)
+  ip_registro       String?   @db.VarChar(45)
+  intentos_fallidos Int?      @default(0)
+  bloqueado_hasta   DateTime? @db.Timestamptz(6)
+  deleted_at        DateTime? @db.Timestamptz(6)
+  updated_at        DateTime? @default(now()) @db.Timestamptz(6)
 
   adoptante             Adoptante?
   albergue              Albergue?
   notificacion          Notificacion[]
   recuperacion_password RecuperacionPassword[]
   termino_aceptado      TerminoAceptado[]
-  rol                   Rol                   @relation(fields: [id_rol], references: [id_rol], onDelete: NoAction, onUpdate: NoAction)
-  log_auditoria         LogAuditoria[]        // escritos por el usuario como autor
+  rol                   Rol                    @relation(fields: [id_rol], references: [id_rol], onDelete: NoAction, onUpdate: NoAction)
+  log_auditoria         LogAuditoria[] // escritos por el usuario como autor
 
   @@index([correo], map: "idx_usuario_correo")
   @@index([estado_cuenta], map: "idx_usuario_estado_cuenta")
@@ -39,23 +41,23 @@ model Usuario {
 }
 
 model Rol {
-  id_rol    Int       @id @default(autoincrement())
-  nombre_rol String   @unique @db.VarChar(50)
-  usuario   Usuario[]
+  id_rol     Int       @id @default(autoincrement())
+  nombre_rol String    @unique @db.VarChar(50)
+  usuario    Usuario[]
 
   @@map("rol")
 }
 
 model Adoptante {
-  id_usuario         Int             @id
-  nombre_completo    String?         @db.VarChar(150)
-  whatsapp_adoptante String?         @db.VarChar(20)
-  ciudad             String?         @db.VarChar(100)
+  id_usuario         Int                        @id
+  nombre_completo    String?                    @db.VarChar(150)
+  whatsapp_adoptante String?                    @db.VarChar(20)
+  ciudad             String?                    @db.VarChar(100)
   direccion          String?
   foto_perfil        String?
-  embedding          String?         // text — no pgvector instalado en esta BD
-  deleted_at         DateTime?       @db.Timestamptz(6)
-  updated_at         DateTime?       @default(now()) @db.Timestamptz(6)
+  embedding          Unsupported("vector")?
+  deleted_at         DateTime?                  @db.Timestamptz(6)
+  updated_at         DateTime?                  @default(now()) @db.Timestamptz(6)
 
   usuario       Usuario        @relation(fields: [id_usuario], references: [id_usuario], onDelete: Cascade, onUpdate: NoAction)
   adopcion      Adopcion[]
@@ -67,39 +69,40 @@ model Adoptante {
 }
 
 model Albergue {
-  id_usuario      Int     @id
-  nit             String  @unique @db.VarChar(50)
-  nombre_albergue String? @db.VarChar(150)
+  id_usuario      Int       @id
+  nit             String    @unique @db.VarChar(50)
+  nombre_albergue String?   @db.VarChar(150)
   logo            String?
   descripcion     String?
-  whatsapp_actual String? @db.VarChar(20)
-  sitio_web       String? @db.VarChar(255)
+  whatsapp_actual String?   @db.VarChar(20)
+  sitio_web       String?   @db.VarChar(255)
   deleted_at      DateTime? @db.Timestamptz(6)
   updated_at      DateTime? @default(now()) @db.Timestamptz(6)
 
-  usuario                     Usuario                      @relation(fields: [id_usuario], references: [id_usuario], onDelete: Cascade, onUpdate: NoAction)
+  usuario                     Usuario                     @relation(fields: [id_usuario], references: [id_usuario], onDelete: Cascade, onUpdate: NoAction)
   historial_whatsapp_albergue HistorialWhatsappAlbergue[]
   mascota                     Mascota[]
+  contactoWhatsapps           ContactoWhatsapp[]
 
   @@map("albergue")
 }
 
 model Mascota {
-  id_mascota         Int            @id @default(autoincrement())
+  id_mascota         Int                        @id @default(autoincrement())
   id_albergue        Int
-  nombre             String?        @db.VarChar(100)
+  nombre             String?                    @db.VarChar(100)
   descripcion        String?
-  estado_adopcion    String  @default("disponible")
-  fecha_publicacion  DateTime?      @default(now()) @db.Timestamptz(6)
-  embedding          String?        // text — no pgvector instalado en esta BD
-  deleted_at         DateTime?      @db.Timestamptz(6)
-  updated_at         DateTime?      @default(now()) @db.Timestamptz(6)
+  estado_adopcion    String                     @default("disponible")
+  fecha_publicacion  DateTime?                  @default(now()) @db.Timestamptz(6)
+  embedding          Unsupported("vector")?
+  deleted_at         DateTime?                  @db.Timestamptz(6)
+  updated_at         DateTime?                  @default(now()) @db.Timestamptz(6)
   motivo_eliminacion String?
   motivo_moderacion  String?
 
-  adopcion    Adopcion[]
-  descarte    Descarte[]
-  albergue    Albergue    @relation(fields: [id_albergue], references: [id_usuario], onDelete: Cascade, onUpdate: NoAction)
+  adopcion     Adopcion[]
+  descarte     Descarte[]
+  albergue     Albergue      @relation(fields: [id_albergue], references: [id_usuario], onDelete: Cascade, onUpdate: NoAction)
   mascota_foto MascotaFoto[]
   mascota_tag  MascotaTag[]
   match        Match[]
@@ -111,7 +114,7 @@ model Mascota {
 }
 
 model MascotaFoto {
-  id_foto    Int     @id @default(autoincrement())
+  id_foto    Int    @id @default(autoincrement())
   id_mascota Int
   url_foto   String
   orden      Int?
@@ -143,7 +146,7 @@ model OpcionTag {
   valor     String? @db.VarChar(100)
   estado    String? @default("activo") @db.VarChar(20)
 
-  tag           Tag           @relation(fields: [id_tag], references: [id_tag], onDelete: Cascade, onUpdate: NoAction)
+  tag           Tag            @relation(fields: [id_tag], references: [id_tag], onDelete: Cascade, onUpdate: NoAction)
   adoptante_tag AdoptanteTag[]
   mascota_tag   MascotaTag[]
 
@@ -154,8 +157,8 @@ model MascotaTag {
   id_mascota Int
   id_opcion  Int
 
-  mascota    Mascota    @relation(fields: [id_mascota], references: [id_mascota], onDelete: Cascade, onUpdate: NoAction)
-  opcion_tag OpcionTag  @relation(fields: [id_opcion], references: [id_opcion], onDelete: Cascade, onUpdate: NoAction)
+  mascota    Mascota   @relation(fields: [id_mascota], references: [id_mascota], onDelete: Cascade, onUpdate: NoAction)
+  opcion_tag OpcionTag @relation(fields: [id_opcion], references: [id_opcion], onDelete: Cascade, onUpdate: NoAction)
 
   @@id([id_mascota, id_opcion])
   @@map("mascota_tag")
@@ -173,15 +176,15 @@ model AdoptanteTag {
 }
 
 model Match {
-  id_match     Int         @id @default(autoincrement())
+  id_match     Int       @id @default(autoincrement())
   id_adoptante Int
   id_mascota   Int
-  puntaje      Decimal?    @db.Decimal(5, 2)
-  estado       String @default("pendiente")
-  fecha        DateTime?   @default(now()) @db.Timestamptz(6)
+  puntaje      Decimal?  @db.Decimal(5, 2)
+  estado       String    @default("pendiente")
+  fecha        DateTime? @default(now()) @db.Timestamptz(6)
 
-  adoptante Adoptante @relation(fields: [id_adoptante], references: [id_usuario], onDelete: Cascade, onUpdate: NoAction)
-  mascota   Mascota   @relation(fields: [id_mascota], references: [id_mascota], onDelete: Cascade, onUpdate: NoAction)
+  adoptante         Adoptante          @relation(fields: [id_adoptante], references: [id_usuario], onDelete: Cascade, onUpdate: NoAction)
+  mascota           Mascota            @relation(fields: [id_mascota], references: [id_mascota], onDelete: Cascade, onUpdate: NoAction)
   contacto_whatsapp ContactoWhatsapp[]
 
   @@index([id_adoptante], map: "idx_match_adoptante")
@@ -204,15 +207,15 @@ model ContactoWhatsapp {
 }
 
 model Adopcion {
-  id_adopcion               Int            @id @default(autoincrement())
+  id_adopcion               Int       @id @default(autoincrement())
   id_mascota                Int
   id_adoptante              Int
-  fecha                     DateTime?      @default(now()) @db.Timestamptz(6)
-  estado                    String @default("en_proceso")
+  fecha                     DateTime? @default(now()) @db.Timestamptz(6)
+  estado                    String    @default("en_proceso")
   observaciones             String?
-  fecha_match               DateTime?     @db.Timestamptz(6)
-  fecha_contacto            DateTime?     @db.Timestamptz(6)
-  porcentaje_compatibilidad Decimal?      @db.Decimal(5, 2)
+  fecha_match               DateTime? @db.Timestamptz(6)
+  fecha_contacto            DateTime? @db.Timestamptz(6)
+  porcentaje_compatibilidad Decimal?  @db.Decimal(5, 2)
 
   adoptante Adoptante @relation(fields: [id_adoptante], references: [id_usuario], onDelete: Cascade, onUpdate: NoAction)
   mascota   Mascota   @relation(fields: [id_mascota], references: [id_mascota], onDelete: Cascade, onUpdate: NoAction)
@@ -236,17 +239,17 @@ model Descarte {
 }
 
 model Notificacion {
-  id                 Int                @id @default(autoincrement())
-  id_usuario         Int
-  tipo_notificacion  String?            @db.VarChar(50)
-  mensaje            String?
-  estado             String @default("pendiente")
-  fecha_creacion     DateTime?          @default(now()) @db.Timestamptz(6)
-  fecha_lectura      DateTime?          @db.Timestamptz(6)
-  recurso_tipo       String?            @db.VarChar(50)
-  recurso_id         Int?
+  id                Int       @id @default(autoincrement())
+  id_usuario        Int
+  tipo_notificacion String?   @db.VarChar(50)
+  mensaje           String?
+  estado            String    @default("pendiente")
+  fecha_creacion    DateTime? @default(now()) @db.Timestamptz(6)
+  fecha_lectura     DateTime? @db.Timestamptz(6)
+  recurso_tipo      String?   @db.VarChar(50)
+  recurso_id        Int?
 
-  usuario          Usuario            @relation(fields: [id_usuario], references: [id_usuario], onDelete: Cascade, onUpdate: NoAction)
+  usuario            Usuario             @relation(fields: [id_usuario], references: [id_usuario], onDelete: Cascade, onUpdate: NoAction)
   envio_notificacion EnvioNotificacion[]
 
   @@index([estado], map: "idx_notificacion_estado")
@@ -256,13 +259,13 @@ model Notificacion {
 }
 
 model EnvioNotificacion {
-  id                        Int          @id @default(autoincrement())
+  id                        Int       @id @default(autoincrement())
   id_notificacion           Int
-  canal                     String?      @db.VarChar(50)
-  intento                   Int?         @default(1)
-  estado                    String?      @db.VarChar(20)
-  ts_evento_contacto        DateTime?    @default(now()) @db.Timestamptz(6)
-  ts_notificacion_entregada DateTime?    @db.Timestamptz(6)
+  canal                     String?   @db.VarChar(50)
+  intento                   Int?      @default(1)
+  estado                    String?   @db.VarChar(20)
+  ts_evento_contacto        DateTime? @default(now()) @db.Timestamptz(6)
+  ts_notificacion_entregada DateTime? @db.Timestamptz(6)
   error                     String?
 
   notificacion Notificacion @relation(fields: [id_notificacion], references: [id], onDelete: Cascade, onUpdate: NoAction)
@@ -271,12 +274,12 @@ model EnvioNotificacion {
 }
 
 model RecuperacionPassword {
-  id_token         Int        @id @default(autoincrement())
+  id_token         Int      @id @default(autoincrement())
   id_usuario       Int
   token_hash       String
-  fecha_expiracion DateTime   @db.Timestamptz(6)
-  usado            Boolean?   @default(false)
-  estado           String?    @default("activo") @db.VarChar(20)
+  fecha_expiracion DateTime @db.Timestamptz(6)
+  usado            Boolean? @default(false)
+  estado           String?  @default("activo") @db.VarChar(20)
 
   usuario Usuario @relation(fields: [id_usuario], references: [id_usuario], onDelete: Cascade, onUpdate: NoAction)
 

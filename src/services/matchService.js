@@ -1,75 +1,63 @@
+const { Prisma } = require('@prisma/client');
 const prisma = require('../config/prisma');
 
-const calcularCompatibilidad = async (idAdoptante) => {
-    const adoptante_tags = await prisma.adoptanteTag.findMany({
-        where: { id_usuario: idAdoptante },
-        select: { id_opcion: true }
-    });
+const redis = require('../config/redis');
 
-    if (adoptante_tags.length === 0) {
-        return [];
+const calcularCompatibilidad = async (idAdoptante) => {
+    const cacheKey = `match:db:${idAdoptante}`;
+    if (redis) {
+        const cached = await redis.get(cacheKey);
+        if (cached) {
+            return typeof cached === 'string' ? JSON.parse(cached) : cached;
+        }
     }
 
-    const adoptante_opcion_ids = adoptante_tags.map(r => r.id_opcion);
-
-    const tagsDetalleAdoptanteRaw = await prisma.$queryRaw`
-        SELECT ot.id_opcion, ot.id_tag, t.peso_matching, t.es_filtro_absoluto
-        FROM adoptante_tag at
-        JOIN opcion_tag ot ON at.id_opcion = ot.id_opcion
-        JOIN tag t ON ot.id_tag = t.id_tag
-        WHERE at.id_usuario = ${idAdoptante}
+    // Verificar si el adoptante tiene embedding
+    const adoptanteRes = await prisma.$queryRaw`
+        SELECT id_usuario FROM adoptante 
+        WHERE id_usuario = ${idAdoptante} AND embedding IS NOT NULL
     `;
-
-    const tagsAdoptanteMap = new Map();
-    let sumaTotalPesos = 0;
-    for (const row of tagsDetalleAdoptanteRaw) {
-        const peso = Number(row.peso_matching) || 0;
-        tagsAdoptanteMap.set(row.id_opcion, {
-            id_tag: row.id_tag,
-            peso_matching: peso,
-            es_filtro_absoluto: row.es_filtro_absoluto,
-        });
-        sumaTotalPesos += peso;
+    
+    if (!adoptanteRes || adoptanteRes.length === 0) {
+        await limpiarMatchesPendientes(idAdoptante);
+        return [];
     }
 
     const idsDescartadosRaw = await prisma.descarte.findMany({
         where: { id_adoptante: idAdoptante },
         select: { id_mascota: true }
     });
-    const idsDescartados = new Set(idsDescartadosRaw.map(r => r.id_mascota));
+    const idsDescartados = idsDescartadosRaw.map(r => r.id_mascota);
 
-    const mascotas = await prisma.mascota.findMany({
-        where: {
-            estado_adopcion: 'disponible',
-            id_mascota: { notIn: Array.from(idsDescartados) },
-        },
-        select: { id_mascota: true, nombre: true, descripcion: true }
-    });
+    const discardCondition = idsDescartados.length > 0
+        ? Prisma.sql`AND m.id_mascota NOT IN (${Prisma.join(idsDescartados)})`
+        : Prisma.empty;
 
-    if (mascotas.length === 0) {
+    // Calcular match usando pgvector y compatibilidad >= 30%
+    const mascotasMatch = await prisma.$queryRaw`
+        SELECT
+            m.id_mascota,
+            m.nombre,
+            m.descripcion,
+            a.id_usuario AS id_albergue,
+            a.nombre_albergue,
+            ROUND((1 - (m.embedding <=> (SELECT embedding FROM adoptante WHERE id_usuario = ${idAdoptante})))::numeric * 100) AS compatibilidad
+        FROM mascota m
+        JOIN albergue a ON m.id_albergue = a.id_usuario
+        WHERE m.estado_adopcion = 'disponible' 
+          AND m.deleted_at IS NULL 
+          AND m.embedding IS NOT NULL
+          ${discardCondition}
+          AND ROUND((1 - (m.embedding <=> (SELECT embedding FROM adoptante WHERE id_usuario = ${idAdoptante})))::numeric * 100) >= 30
+        ORDER BY m.embedding <=> (SELECT embedding FROM adoptante WHERE id_usuario = ${idAdoptante}) ASC
+    `;
+
+    if (mascotasMatch.length === 0) {
         await limpiarMatchesPendientes(idAdoptante);
         return [];
     }
 
-    const mascotaIds = mascotas.map(m => m.id_mascota);
-
-    const mascotaTagsRaw = await prisma.$queryRaw`
-        SELECT mt.id_mascota, mt.id_opcion, ot.id_tag
-        FROM mascota_tag mt
-        JOIN opcion_tag ot ON mt.id_opcion = ot.id_opcion
-        WHERE mt.id_mascota = ANY(${mascotaIds})
-    `;
-
-    const tagsPorMascota = new Map();
-    for (const row of mascotaTagsRaw) {
-        if (!tagsPorMascota.has(row.id_mascota)) {
-            tagsPorMascota.set(row.id_mascota, []);
-        }
-        tagsPorMascota.get(row.id_mascota).push({
-            id_opcion: row.id_opcion,
-            id_tag: row.id_tag,
-        });
-    }
+    const mascotaIds = mascotasMatch.map(m => m.id_mascota);
 
     const fotosMap = new Map();
     if (mascotaIds.length > 0) {
@@ -103,50 +91,18 @@ const calcularCompatibilidad = async (idAdoptante) => {
         });
     }
 
-    const resultados = [];
-    for (const mascota of mascotas) {
-        const mascota_tags = tagsPorMascota.get(mascota.id_mascota) || [];
-        const mascota_opcion_ids = new Set(mascota_tags.map(t => t.id_opcion));
-        const mascota_tag_ids = new Set(mascota_tags.map(t => t.id_tag));
+    const resultados = mascotasMatch.map(mascota => ({
+        id_mascota: mascota.id_mascota,
+        nombre: mascota.nombre,
+        descripcion: mascota.descripcion,
+        id_albergue: mascota.id_albergue,
+        nombre_albergue: mascota.nombre_albergue,
+        foto: fotosMap.get(mascota.id_mascota) || null,
+        compatibilidad: Number(mascota.compatibilidad),
+        tags: tagsDetallePorMascota.get(mascota.id_mascota) || [],
+    }));
 
-        let pasaFiltrosAbsolutos = true;
-        for (const [id_opcion, info] of tagsAdoptanteMap) {
-            if (info.es_filtro_absoluto) {
-                if (!mascota_tag_ids.has(info.id_tag)) {
-                    pasaFiltrosAbsolutos = false;
-                    break;
-                }
-            }
-        }
-
-        if (!pasaFiltrosAbsolutos) continue;
-
-        let sumaObtenida = 0;
-        for (const [id_opcion, info] of tagsAdoptanteMap) {
-            if (info.es_filtro_absoluto) continue;
-            if (mascota_opcion_ids.has(id_opcion)) {
-                sumaObtenida += info.peso_matching;
-            }
-        }
-
-        const compatibilidad = sumaTotalPesos > 0
-            ? Math.round((sumaObtenida / sumaTotalPesos) * 100)
-            : 0;
-
-        if (compatibilidad >= 30) {
-            resultados.push({
-                id_mascota: mascota.id_mascota,
-                nombre: mascota.nombre,
-                descripcion: mascota.descripcion,
-                foto: fotosMap.get(mascota.id_mascota) || null,
-                compatibilidad,
-                tags: tagsDetallePorMascota.get(mascota.id_mascota) || [],
-            });
-        }
-    }
-
-    resultados.sort((a, b) => b.compatibilidad - a.compatibilidad);
-
+    // Recrear matches pendientes
     await prisma.$transaction(async (tx) => {
         await tx.match.deleteMany({
             where: {
@@ -166,6 +122,10 @@ const calcularCompatibilidad = async (idAdoptante) => {
             });
         }
     });
+
+    if (redis) {
+        await redis.set(cacheKey, JSON.stringify(resultados), { ex: 3600 });
+    }
 
     return resultados;
 };

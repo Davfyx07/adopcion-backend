@@ -1,167 +1,126 @@
+/**
+ * Tests para matchService.calcularCompatibilidad (pgvector)
+ * y matchService.descartarMascota
+ *
+ * HU-MT-01: el algoritmo ahora usa $queryRaw con pgvector (<=>)
+ * en lugar de calcular en memoria, por lo que mockeamos $queryRaw.
+ */
 jest.mock('../config/prisma', () => require('./__mocks__/prisma'));
+jest.mock('../config/redis', () => null); // sin Redis en tests
 
 const prisma = require('../config/prisma');
 const matchService = require('../services/matchService');
 
-describe('matchService — calcularCompatibilidad', () => {
+// ────────────────────────────────────────────────────────────
+// calcularCompatibilidad
+// ────────────────────────────────────────────────────────────
+describe('matchService — calcularCompatibilidad (pgvector)', () => {
     beforeEach(() => {
         jest.clearAllMocks();
     });
 
-    it('debe retornar [] cuando el adoptante no tiene tags', async () => {
-        prisma.adoptanteTag.findMany.mockResolvedValueOnce([]);
+    it('retorna [] cuando el adoptante no tiene embedding', async () => {
+        prisma.$queryRaw.mockResolvedValueOnce([]); // adoptante sin embedding
 
         const result = await matchService.calcularCompatibilidad(1);
 
         expect(result).toEqual([]);
-        expect(prisma.descarte.findMany).not.toHaveBeenCalled();
+        expect(prisma.match.deleteMany).toHaveBeenCalled(); // limpia pendientes
     });
 
-    it('debe calcular compatibilidad con fórmula ponderada correctamente', async () => {
-        prisma.adoptanteTag.findMany.mockResolvedValueOnce([
-            { id_opcion: 10 },
-            { id_opcion: 20 },
-            { id_opcion: 30 },
-        ]);
-
-        prisma.$queryRaw
-            .mockResolvedValueOnce([
-                { id_opcion: 10, id_tag: 1, peso_matching: '0', es_filtro_absoluto: true },
-                { id_opcion: 20, id_tag: 2, peso_matching: '50', es_filtro_absoluto: false },
-                { id_opcion: 30, id_tag: 3, peso_matching: '30', es_filtro_absoluto: false },
-            ]);
-
+    it('retorna [] cuando no hay mascotas con compatibilidad >= 30%', async () => {
+        // adoptante tiene embedding
+        prisma.$queryRaw.mockResolvedValueOnce([{ id_usuario: 1 }]);
+        // descartes vacíos
         prisma.descarte.findMany.mockResolvedValueOnce([]);
-
-        prisma.mascota.findMany.mockResolvedValueOnce([
-            { id_mascota: 1, nombre: 'Luna', descripcion: 'Perrita' },
-        ]);
-
-        prisma.$queryRaw
-            .mockResolvedValueOnce([
-                { id_mascota: 1, id_opcion: 20, id_tag: 2 },
-                { id_mascota: 1, id_opcion: 10, id_tag: 1 },
-            ])
-            .mockResolvedValueOnce([])
-            .mockResolvedValueOnce([]);
-
-        const result = await matchService.calcularCompatibilidad(1);
-
-        expect(result).toHaveLength(1);
-        expect(result[0].compatibilidad).toBe(63);
-        expect(result[0].nombre).toBe('Luna');
-    });
-
-    it('debe excluir mascotas que no pasen filtros absolutos', async () => {
-        prisma.adoptanteTag.findMany.mockResolvedValueOnce([
-            { id_opcion: 10 },
-        ]);
-
-        prisma.$queryRaw
-            .mockResolvedValueOnce([
-                { id_opcion: 10, id_tag: 1, peso_matching: '0', es_filtro_absoluto: true },
-            ]);
-
-        prisma.descarte.findMany.mockResolvedValueOnce([]);
-
-        prisma.mascota.findMany.mockResolvedValueOnce([
-            { id_mascota: 2, nombre: 'Rocky', descripcion: 'Perro' },
-        ]);
-
-        prisma.$queryRaw
-            .mockResolvedValueOnce([
-                { id_mascota: 2, id_opcion: 99, id_tag: 5 },
-            ])
-            .mockResolvedValueOnce([])
-            .mockResolvedValueOnce([]);
-
-        const result = await matchService.calcularCompatibilidad(1);
-
-        expect(result).toHaveLength(0);
-    });
-
-    it('debe excluir mascotas descartadas', async () => {
-        prisma.adoptanteTag.findMany.mockResolvedValueOnce([]);
+        // pgvector no retorna mascotas (todas < 30%)
+        prisma.$queryRaw.mockResolvedValueOnce([]);
 
         const result = await matchService.calcularCompatibilidad(1);
 
         expect(result).toEqual([]);
-    });
-
-    it('debe retornar [] si ninguna mascota supera el 30%', async () => {
-        prisma.adoptanteTag.findMany.mockResolvedValueOnce([
-            { id_opcion: 10 },
-        ]);
-
-        prisma.$queryRaw
-            .mockResolvedValueOnce([
-                { id_opcion: 10, id_tag: 1, peso_matching: '10', es_filtro_absoluto: false },
-            ]);
-
-        prisma.descarte.findMany.mockResolvedValueOnce([]);
-
-        prisma.mascota.findMany.mockResolvedValueOnce([
-            { id_mascota: 3, nombre: 'Mishi', descripcion: 'Gato' },
-        ]);
-
-        prisma.$queryRaw
-            .mockResolvedValueOnce([
-                { id_mascota: 3, id_opcion: 99, id_tag: 5 },
-            ])
-            .mockResolvedValueOnce([])
-            .mockResolvedValueOnce([]);
-
-        prisma.match.deleteMany.mockResolvedValueOnce({ count: 0 });
-        prisma.match.createMany.mockResolvedValueOnce({ count: 0 });
-
-        const result = await matchService.calcularCompatibilidad(1);
-
-        expect(result).toEqual([]);
-    });
-
-    it('debe persistir matches que superan el umbral', async () => {
-        prisma.adoptanteTag.findMany.mockResolvedValueOnce([
-            { id_opcion: 10 },
-            { id_opcion: 20 },
-        ]);
-
-        prisma.$queryRaw
-            .mockResolvedValueOnce([
-                { id_opcion: 10, id_tag: 1, peso_matching: '50', es_filtro_absoluto: false },
-                { id_opcion: 20, id_tag: 2, peso_matching: '50', es_filtro_absoluto: false },
-            ]);
-
-        prisma.descarte.findMany.mockResolvedValueOnce([]);
-
-        prisma.mascota.findMany.mockResolvedValueOnce([
-            { id_mascota: 4, nombre: 'Max', descripcion: 'Cachorro' },
-        ]);
-
-        prisma.$queryRaw
-            .mockResolvedValueOnce([
-                { id_mascota: 4, id_opcion: 10, id_tag: 1 },
-                { id_mascota: 4, id_opcion: 20, id_tag: 2 },
-            ])
-            .mockResolvedValueOnce([])
-            .mockResolvedValueOnce([]);
-
-        const result = await matchService.calcularCompatibilidad(1);
-
-        expect(result).toHaveLength(1);
-        expect(result[0].compatibilidad).toBe(100);
         expect(prisma.match.deleteMany).toHaveBeenCalledWith({
             where: { id_adoptante: 1, estado: 'pendiente' },
         });
-        expect(prisma.match.createMany).toHaveBeenCalled();
+    });
+
+    it('retorna mascotas ordenadas por compatibilidad descendente', async () => {
+        prisma.$queryRaw
+            // 1. adoptante con embedding
+            .mockResolvedValueOnce([{ id_usuario: 1 }])
+            // 2. query pgvector — 2 mascotas
+            .mockResolvedValueOnce([
+                { id_mascota: 10, nombre: 'Luna', descripcion: 'Perrita', id_albergue: 1, nombre_albergue: 'Refugio', compatibilidad: 80 },
+                { id_mascota: 20, nombre: 'Rocky', descripcion: 'Perro', id_albergue: 1, nombre_albergue: 'Refugio', compatibilidad: 50 },
+            ])
+            // 3. fotos (batch)
+            .mockResolvedValueOnce([
+                { id_mascota: 10, url_foto: 'http://img/luna.jpg' },
+            ])
+            // 4. tags detalle (batch)
+            .mockResolvedValueOnce([
+                { id_mascota: 10, valor: 'Pequeño', nombre_tag: 'Tamaño', categoria: 'fisica' },
+            ]);
+
+        prisma.descarte.findMany.mockResolvedValueOnce([]);
+        prisma.match.deleteMany.mockResolvedValueOnce({ count: 0 });
+        prisma.match.createMany.mockResolvedValueOnce({ count: 2 });
+
+        const result = await matchService.calcularCompatibilidad(1);
+
+        expect(result).toHaveLength(2);
+        expect(result[0].compatibilidad).toBe(80);
+        expect(result[0].nombre).toBe('Luna');
+        expect(result[0].foto).toBe('http://img/luna.jpg');
+        expect(result[1].compatibilidad).toBe(50);
+    });
+
+    it('persiste matches en BD tras el cálculo', async () => {
+        prisma.$queryRaw
+            .mockResolvedValueOnce([{ id_usuario: 1 }])
+            .mockResolvedValueOnce([
+                { id_mascota: 5, nombre: 'Max', descripcion: 'Cachorro', id_albergue: 2, nombre_albergue: 'Hogar', compatibilidad: 75 },
+            ])
+            .mockResolvedValueOnce([])  // fotos
+            .mockResolvedValueOnce([]); // tags
+
+        prisma.descarte.findMany.mockResolvedValueOnce([]);
+        prisma.match.deleteMany.mockResolvedValueOnce({ count: 0 });
+        prisma.match.createMany.mockResolvedValueOnce({ count: 1 });
+
+        await matchService.calcularCompatibilidad(1);
+
+        expect(prisma.match.deleteMany).toHaveBeenCalledWith({
+            where: { id_adoptante: 1, estado: 'pendiente' },
+        });
+        expect(prisma.match.createMany).toHaveBeenCalledWith({
+            data: [{ id_adoptante: 1, id_mascota: 5, puntaje: 75, estado: 'pendiente' }],
+        });
+    });
+
+    it('excluye mascotas descartadas de la query pgvector', async () => {
+        // 1. adoptante con embedding
+        prisma.$queryRaw.mockResolvedValueOnce([{ id_usuario: 1 }]);
+        // descarte de mascota 99
+        prisma.descarte.findMany.mockResolvedValueOnce([{ id_mascota: 99 }]);
+        // pgvector retorna vacío (mascota descartada queda fuera por el NOT IN)
+        prisma.$queryRaw.mockResolvedValueOnce([]);
+
+        const result = await matchService.calcularCompatibilidad(1);
+
+        expect(result).toEqual([]);
     });
 });
 
+// ────────────────────────────────────────────────────────────
+// descartarMascota
+// ────────────────────────────────────────────────────────────
 describe('matchService — descartarMascota', () => {
     beforeEach(() => {
         jest.clearAllMocks();
     });
 
-    it('debe retornar error si la mascota no existe', async () => {
+    it('retorna 404 si la mascota no existe', async () => {
         prisma.mascota.findUnique.mockResolvedValueOnce(null);
 
         const result = await matchService.descartarMascota(1, 999);
@@ -170,16 +129,9 @@ describe('matchService — descartarMascota', () => {
         expect(result.status).toBe(404);
     });
 
-    it('debe retornar error si ya fue descartada', async () => {
-        prisma.mascota.findUnique.mockResolvedValueOnce({
-            id_mascota: 5,
-            nombre: 'Toby',
-        });
-
-        prisma.descarte.findUnique.mockResolvedValueOnce({
-            id_adoptante: 1,
-            id_mascota: 5,
-        });
+    it('retorna 409 si ya fue descartada', async () => {
+        prisma.mascota.findUnique.mockResolvedValueOnce({ id_mascota: 5, nombre: 'Toby' });
+        prisma.descarte.findUnique.mockResolvedValueOnce({ id_adoptante: 1, id_mascota: 5 });
 
         const result = await matchService.descartarMascota(1, 5);
 
@@ -187,19 +139,10 @@ describe('matchService — descartarMascota', () => {
         expect(result.status).toBe(409);
     });
 
-    it('debe crear descarte y eliminar match pendiente', async () => {
-        prisma.mascota.findUnique.mockResolvedValueOnce({
-            id_mascota: 6,
-            nombre: 'Cookie',
-        });
-
+    it('crea descarte y elimina match pendiente', async () => {
+        prisma.mascota.findUnique.mockResolvedValueOnce({ id_mascota: 6, nombre: 'Cookie' });
         prisma.descarte.findUnique.mockResolvedValueOnce(null);
-
-        prisma.descarte.create.mockResolvedValueOnce({
-            id_adoptante: 1,
-            id_mascota: 6,
-        });
-
+        prisma.descarte.create.mockResolvedValueOnce({ id_adoptante: 1, id_mascota: 6 });
         prisma.match.deleteMany.mockResolvedValueOnce({ count: 1 });
 
         const result = await matchService.descartarMascota(1, 6);
