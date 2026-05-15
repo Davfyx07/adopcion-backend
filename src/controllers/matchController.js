@@ -59,7 +59,6 @@ const descartarMascota = async (req, res) => {
     }
 };
 
-};
 
 
 module.exports = {
