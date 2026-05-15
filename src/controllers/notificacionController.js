@@ -1,24 +1,28 @@
-const { obtenerNotificaciones, marcarLeida, marcarTodasLeidas } = require('../services/notificacionService');
+const {
+    obtenerNotificaciones,
+    marcarLeida,
+    marcarTodasLeidas,
+} = require('../services/notificacionService');
 
 /**
  * GET /api/notificaciones
- * Obtiene las notificaciones del usuario autenticado.
- * Query params:
- *   - solo_no_leidas (boolean): si es true, solo retorna no leídas
- *   - limit (number): límite de resultados (default 50)
+ * Query params: tipo, page, limit, solo_no_leidas
  */
 const getNotificaciones = async (req, res) => {
     try {
         const idUsuario = req.user.id;
+        const tipo = req.query.tipo || null;
+        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
         const soloNoLeidas = req.query.solo_no_leidas === 'true';
-        const limit = parseInt(req.query.limit) || 50;
 
-        const result = await obtenerNotificaciones(idUsuario, { soloNoLeidas, limit });
+        const result = await obtenerNotificaciones(idUsuario, { tipo, page, limit, soloNoLeidas });
 
         return res.status(200).json({
             success: true,
             data: result.data,
             total_no_leidas: result.total_no_leidas,
+            meta: result.meta,
         });
     } catch (err) {
         console.error('[notificacion.controller] getNotificaciones:', err.message);
@@ -31,12 +35,19 @@ const getNotificaciones = async (req, res) => {
 
 /**
  * PATCH /api/notificaciones/:id/leida
- * Marca una notificación como leída.
+ * Marca una notificación como leída y retorna la notificación actualizada.
  */
 const marcarNotificacionLeida = async (req, res) => {
     try {
         const idNotificacion = parseInt(req.params.id);
         const idUsuario = req.user.id;
+
+        if (isNaN(idNotificacion) || idNotificacion <= 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'El ID de notificación debe ser un entero positivo.',
+            });
+        }
 
         const result = await marcarLeida(idNotificacion, idUsuario);
 
@@ -50,6 +61,7 @@ const marcarNotificacionLeida = async (req, res) => {
         return res.status(200).json({
             success: true,
             message: 'Notificación marcada como leída.',
+            data: result.data,
         });
     } catch (err) {
         console.error('[notificacion.controller] marcarNotificacionLeida:', err.message);
@@ -61,10 +73,10 @@ const marcarNotificacionLeida = async (req, res) => {
 };
 
 /**
- * PATCH /api/notificaciones/leidas
- * Marca todas las notificaciones como leídas.
+ * PATCH /api/notificaciones/leer-todas
+ * Marca todas las notificaciones del usuario como leídas.
  */
-const marcarTodasLeidasController = async (req, res) => {
+const leerTodasController = async (req, res) => {
     try {
         const idUsuario = req.user.id;
 
@@ -76,7 +88,7 @@ const marcarTodasLeidasController = async (req, res) => {
             count: result.count,
         });
     } catch (err) {
-        console.error('[notificacion.controller] marcarTodasLeidas:', err.message);
+        console.error('[notificacion.controller] leerTodas:', err.message);
         return res.status(500).json({
             success: false,
             message: 'Error al marcar notificaciones como leídas.',
@@ -87,5 +99,5 @@ const marcarTodasLeidasController = async (req, res) => {
 module.exports = {
     getNotificaciones,
     marcarNotificacionLeida,
-    marcarTodasLeidas: marcarTodasLeidasController,
+    leerTodas: leerTodasController,
 };
