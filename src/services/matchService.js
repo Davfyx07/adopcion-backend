@@ -262,11 +262,50 @@ const registrarMatch = async ({ idAdoptante, idMascota, puntaje }) => {
     }
 };
 
-const obtenerMatches = async (idAdoptante) => {
+const obtenerMatches = async (idAdoptante, filters = {}) => {
     try {
+
+        const {
+            estado,
+            fecha_desde,
+            fecha_hasta,
+            limit = 20,
+            offset = 0,
+        } = filters;
+
+        const where = {
+            id_adoptante: idAdoptante,
+        };
+
+        // filtro estado
+        if (estado) {
+            where.estado = estado;
+        }
+
+        // filtro fechas
+        if (fecha_desde || fecha_hasta) {
+            where.fecha = {};
+
+            if (fecha_desde) {
+                where.fecha.gte = new Date(fecha_desde);
+            }
+
+            if (fecha_hasta) {
+                where.fecha.lte = new Date(fecha_hasta);
+            }
+        }
+
         const matches = await prisma.match.findMany({
-            where: { id_adoptante: idAdoptante },
-            orderBy: { fecha: 'desc' },
+            where,
+
+            orderBy: {
+                fecha: 'desc'
+            },
+
+            skip: Number(offset),
+
+            take: Number(limit),
+
             include: {
                 mascota: {
                     include: {
@@ -277,20 +316,14 @@ const obtenerMatches = async (idAdoptante) => {
                                 whatsapp_actual: true,
                             }
                         },
+
                         mascota_foto: {
-                            orderBy: { orden: 'asc' },
+                            orderBy: {
+                                orden: 'asc'
+                            },
                             take: 1,
-                            select: { url_foto: true }
-                        },
-                        mascota_tag: {
-                            include: {
-                                opcion_tag: {
-                                    include: {
-                                        tag: {
-                                            select: { nombre_tag: true, categoria: true }
-                                        }
-                                    }
-                                }
+                            select: {
+                                url_foto: true
                             }
                         }
                     }
@@ -298,33 +331,41 @@ const obtenerMatches = async (idAdoptante) => {
             }
         });
 
+        const total = await prisma.match.count({
+            where
+        });
+
         const data = matches.map(m => ({
             id_match: m.id_match,
-            id_adoptante: m.id_adoptante,
-            id_mascota: m.id_mascota,
-            puntaje: m.puntaje,
             estado: m.estado,
+            puntaje: m.puntaje,
             fecha: m.fecha,
+
             mascota: {
                 id_mascota: m.mascota.id_mascota,
                 nombre: m.mascota.nombre,
                 descripcion: m.mascota.descripcion,
                 estado_adopcion: m.mascota.estado_adopcion,
                 foto: m.mascota.mascota_foto[0]?.url_foto || null,
-                tags: m.mascota.mascota_tag.map(mt => ({
-                    valor: mt.opcion_tag.valor,
-                    nombre_tag: mt.opcion_tag.tag.nombre_tag,
-                    categoria: mt.opcion_tag.tag.categoria,
-                })),
-                albergue: {
-                    id_usuario: m.mascota.albergue.id_usuario,
-                    nombre_albergue: m.mascota.albergue.nombre_albergue,
-                    whatsapp: m.mascota.albergue.whatsapp_actual,
-                },
             },
+
+            albergue: {
+                id_usuario: m.mascota.albergue.id_usuario,
+                nombre_albergue: m.mascota.albergue.nombre_albergue,
+                whatsapp: m.mascota.albergue.whatsapp_actual,
+            }
         }));
 
-        return { success: true, data };
+        return {
+            success: true,
+            pagination: {
+                total,
+                limit: Number(limit),
+                offset: Number(offset),
+            },
+            data
+        };
+
     } catch (err) {
         console.error('[matchService] obtenerMatches:', err.message);
         throw err;
@@ -378,6 +419,115 @@ const descartarMascota = async (idAdoptante, idMascota) => {
     }
 };
 
+const obtenerDetalleMatch = async (idMatch, idAdoptante) => {
+
+    try {
+
+        const match = await prisma.match.findFirst({
+            where: {
+                id_match: idMatch,
+                id_adoptante: idAdoptante,
+            },
+
+            include: {
+
+                mascota: {
+
+                    include: {
+
+                        mascota_foto: {
+                            orderBy: {
+                                orden: 'asc'
+                            }
+                        },
+
+                        mascota_tag: {
+                            include: {
+                                opcion_tag: {
+                                    include: {
+                                        tag: true
+                                    }
+                                }
+                            }
+                        },
+
+                        albergue: {
+                            select: {
+                                id_usuario: true,
+                                nombre_albergue: true,
+                                descripcion: true,
+                                whatsapp_actual: true,
+                                sitio_web: true,
+                                logo: true,
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        if (!match) {
+            return {
+                success: false,
+                status: 404,
+                message: 'Match no encontrado.'
+            };
+        }
+
+        return {
+            success: true,
+
+            data: {
+
+                id_match: match.id_match,
+
+                estado: match.estado,
+
+                puntaje_compatibilidad: match.puntaje,
+
+                fecha_match: match.fecha,
+
+                mascota: {
+
+                    id_mascota: match.mascota.id_mascota,
+
+                    nombre: match.mascota.nombre,
+
+                    descripcion: match.mascota.descripcion,
+
+                    estado_actual: match.mascota.estado_adopcion,
+
+                    fotos: match.mascota.mascota_foto.map(f => ({
+                        id_foto: f.id_foto,
+                        url: f.url_foto,
+                        orden: f.orden,
+                    })),
+
+                    tags: match.mascota.mascota_tag.map(t => ({
+                        id_tag: t.opcion_tag.tag.id_tag,
+                        nombre_tag: t.opcion_tag.tag.nombre_tag,
+                        categoria: t.opcion_tag.tag.categoria,
+                        valor: t.opcion_tag.valor,
+                    })),
+                },
+
+                albergue: {
+                    id_usuario: match.mascota.albergue.id_usuario,
+                    nombre_albergue: match.mascota.albergue.nombre_albergue,
+                    descripcion: match.mascota.albergue.descripcion,
+                    whatsapp: match.mascota.albergue.whatsapp_actual,
+                    sitio_web: match.mascota.albergue.sitio_web,
+                    logo: match.mascota.albergue.logo,
+                }
+            }
+        };
+
+    } catch (err) {
+        console.error('[matchService] obtenerDetalleMatch:', err.message);
+        throw err;
+    }
+};
+
 const contactarAdoptante = async (idAlbergue, idMatch) => {
     try {
         return await prisma.$transaction(async (tx) => {
@@ -413,7 +563,7 @@ const contactarAdoptante = async (idAlbergue, idMatch) => {
 
             // 5. Verificar si ya fue contactado (previene duplicidad de notificaciones)
             const yaContactado = match.estado === 'contactado';
-            
+
             // Construir mensaje predefinido
             const nombreAdoptante = match.adoptante.nombre_completo || 'Adoptante';
             const mensaje = `!Hola ${nombreAdoptante}! Somos ${albergue.nombre_albergue} y vimos que hiciste match con ${match.mascota.nombre}. Nos gustaria conversar contigo sobre el proceso de adopcion.`;
@@ -449,12 +599,12 @@ const contactarAdoptante = async (idAlbergue, idMatch) => {
                 }
             });
 
-            return { 
-                success: true, 
-                data: { 
+            return {
+                success: true,
+                data: {
                     enlace_whatsapp: enlaceWhatsapp,
                     estado: yaContactado ? 'contactado' : 'contactado_actualizado'
-                } 
+                }
             };
         });
     } catch (err) {
@@ -462,12 +612,12 @@ const contactarAdoptante = async (idAlbergue, idMatch) => {
         throw err;
     }
 };
-
 module.exports = {
     calcularCompatibilidad,
     limpiarMatchesPendientes,
     registrarMatch,
     obtenerMatches,
     descartarMascota,
+    obtenerDetalleMatch,
     contactarAdoptante,
 };
