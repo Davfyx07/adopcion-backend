@@ -56,6 +56,10 @@ const notificacionRoutes = require('./routes/notificacionRoutes');
 const recomendacionRoutes = require('./routes/recomendacionRoutes');
 
 const matchRoutes = require('./routes/matchRoutes');
+const adopcionRoutes = require('./routes/adopcionRoutes');
+const albergueMatchRoutes = require('./routes/albergueMatchRoutes');
+const adopcionHistorialRoutes = require('./routes/adopcionHistorialRoutes');
+const { iniciarJobLimpieza } = require('./jobs/notificacionCleanupJob');
 
 
 app.use('/api/auth', authRoutes);
@@ -68,7 +72,13 @@ app.use('/api/notificaciones', notificacionRoutes);
 
 app.use('/api/recomendaciones', recomendacionRoutes);
 app.use('/api/match', matchRoutes);
+app.use('/api/adopciones', adopcionRoutes);
+app.use('/api/shelters/matches', albergueMatchRoutes);
+app.use('/api/albergue/adopciones', adopcionHistorialRoutes);
 
 app.get('/health', (_, res) => res.json({ success: true }));
+
+// Iniciar jobs programados
+iniciarJobLimpieza();
 
 app.listen(PORT, () => console.log(`Server corriendo en http://localhost:${PORT}`));

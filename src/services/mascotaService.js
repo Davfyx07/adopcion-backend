@@ -2,6 +2,7 @@ const { Prisma } = require('@prisma/client');
 const prisma = require('../config/prisma');
 const { uploadImage, deleteImage } = require('./storageService');
 const { calcularEmbedding } = require('./embeddingService');
+const redis = require('../config/redis');
 
 // ──────────────────────────────────────────────
 // Helpers
@@ -117,7 +118,11 @@ const crearMascota = async (idAlbergue, authUserId, { nombre, descripcion, fotos
             }
 
             // 4. Calcular embedding
-            const vectorEmbedding = await calcularEmbedding(tagsIds || []);
+            const vectorEmbedding = tagsIds && tagsIds.length > 0 ? await calcularEmbedding(tagsIds, 'mascota') : [];
+            if (vectorEmbedding.length > 0) {
+                const vectorStr = `[${vectorEmbedding.join(',')}]`;
+                await tx.$executeRaw`UPDATE mascota SET embedding = ${vectorStr}::vector WHERE id_mascota = ${idMascota}`;
+            }
 
             // 5. Log de auditoría
             await tx.logAuditoria.create({
@@ -362,7 +367,13 @@ const actualizarMascota = async ({ id_mascota, id_albergue, data, ip }) => {
                 }
 
                 if (!arrayEquals([...tagsAntes].sort(), [...tagsDespues].sort())) {
-                    await calcularEmbedding(tagsUnicos);
+                    const vectorEmbedding = await calcularEmbedding(tagsUnicos, 'mascota');
+                    if (vectorEmbedding.length > 0) {
+                        const vectorStr = `[${vectorEmbedding.join(',')}]`;
+                        await tx.$executeRaw`UPDATE mascota SET embedding = ${vectorStr}::vector WHERE id_mascota = ${id_mascota}`;
+                    } else {
+                        await tx.$executeRaw`UPDATE mascota SET embedding = NULL WHERE id_mascota = ${id_mascota}`;
+                    }
                     embeddingRecalculado = true;
                 }
             }
@@ -739,51 +750,51 @@ const listarMisMascotas = async (idAlbergue, { page, limit }) => {
 // ──────────────────────────────────────────────
 
 const calcularCompatibilidad = async (idAdoptante) => {
-    // Tags del adoptante
-    const adoptante_tagsRows = await prisma.adoptanteTag.findMany({
-        where: { id_usuario: idAdoptante },
-        select: { id_opcion: true }
-    });
-    const adoptante_tags = adoptante_tagsRows.map(r => r.id_opcion);
+    const cacheKey = `match:${idAdoptante}`;
+    if (redis) {
+        const cached = await redis.get(cacheKey);
+        if (cached) {
+            return typeof cached === 'string' ? JSON.parse(cached) : cached;
+        }
+    }
 
-    if (adoptante_tags.length === 0) {
+    // Verificar si el adoptante tiene embedding
+    const adoptanteRes = await prisma.$queryRaw`
+        SELECT id_usuario FROM adoptante 
+        WHERE id_usuario = ${idAdoptante} AND embedding IS NOT NULL
+    `;
+    
+    if (!adoptanteRes || adoptanteRes.length === 0) {
         return [];
     }
 
-    // Mascotas disponibles
-    const mascotasRes = await prisma.mascota.findMany({
-        where: {
-            estado_adopcion: 'disponible',
-        },
-        select: {
-            id_mascota: true,
-            nombre: true,
-            descripcion: true,
-            albergue: {
-                select: { id_usuario: true, nombre_albergue: true }
-            }
-        }
-    });
+    // Calcular match usando pgvector (distancia coseno < 1.0)
+    // distance = m.embedding <=> a.embedding
+    // similarity = (1 - distance) * 100
+    // Filtramos para score > 0 (distance < 1.0)
+    const mascotasMatch = await prisma.$queryRaw`
+        SELECT
+            m.id_mascota,
+            m.nombre,
+            m.descripcion,
+            a.id_usuario AS id_albergue,
+            a.nombre_albergue,
+            ROUND((1 - (m.embedding <=> (SELECT embedding FROM adoptante WHERE id_usuario = ${idAdoptante})))::numeric * 100) AS compatibilidad
+        FROM mascota m
+        JOIN albergue a ON m.id_albergue = a.id_usuario
+        WHERE m.estado_adopcion = 'disponible' 
+          AND m.deleted_at IS NULL 
+          AND m.embedding IS NOT NULL
+          AND (1 - (m.embedding <=> (SELECT embedding FROM adoptante WHERE id_usuario = ${idAdoptante}))) > 0
+        ORDER BY m.embedding <=> (SELECT embedding FROM adoptante WHERE id_usuario = ${idAdoptante}) ASC
+        LIMIT 10
+    `;
 
-    if (mascotasRes.length === 0) {
+    if (mascotasMatch.length === 0) {
         return [];
     }
 
-    const mascotaIds = mascotasRes.map(m => m.id_mascota);
-
-    // Tags de todas las mascotas (batch)
-    const allTagsRows = await prisma.mascotaTag.findMany({
-        where: { id_mascota: { in: mascotaIds } },
-        select: { id_mascota: true, id_opcion: true }
-    });
-
-    const tagsPorMascota = new Map();
-    for (const row of allTagsRows) {
-        if (!tagsPorMascota.has(row.id_mascota)) {
-            tagsPorMascota.set(row.id_mascota, []);
-        }
-        tagsPorMascota.get(row.id_mascota).push(row.id_opcion);
-    }
+    const mascotaIds = mascotasMatch.map(m => m.id_mascota);
 
     // Foto principal de cada mascota (batch)
     const fotosMap = new Map();
@@ -815,29 +826,22 @@ const calcularCompatibilidad = async (idAdoptante) => {
         tagsDetallePorMascota.get(t.id_mascota).push({ valor: t.valor, nombre_tag: t.nombre_tag });
     }
 
-    const resultados = [];
-    for (const mascota of mascotasRes) {
-        const mascota_tags = tagsPorMascota.get(mascota.id_mascota) || [];
+    const resultados = mascotasMatch.map(mascota => ({
+        id_mascota: mascota.id_mascota,
+        nombre: mascota.nombre,
+        descripcion: mascota.descripcion,
+        id_albergue: mascota.id_albergue,
+        nombre_albergue: mascota.nombre_albergue,
+        foto: fotosMap.get(mascota.id_mascota) || null,
+        compatibilidad: Number(mascota.compatibilidad),
+        tags: tagsDetallePorMascota.get(mascota.id_mascota) || [],
+    }));
 
-        const comunes = adoptante_tags.filter(t => mascota_tags.includes(t));
-        const todosUnicos = [...new Set([...adoptante_tags, ...mascota_tags])];
-        const score = todosUnicos.length > 0 ? Math.round((comunes.length / todosUnicos.length) * 100) : 0;
-
-        if (score > 0) {
-            resultados.push({
-                id_mascota: mascota.id_mascota,
-                nombre: mascota.nombre,
-                descripcion: mascota.descripcion,
-                id_albergue: mascota.albergue.id_usuario,
-                nombre_albergue: mascota.albergue.nombre_albergue,
-                foto: fotosMap.get(mascota.id_mascota) || null,
-                compatibilidad: score,
-                tags: tagsDetallePorMascota.get(mascota.id_mascota) || [],
-            });
-        }
+    if (redis) {
+        await redis.set(cacheKey, JSON.stringify(resultados), { ex: 3600 });
     }
 
-    return resultados.sort((a, b) => b.compatibilidad - a.compatibilidad).slice(0, 10);
+    return resultados;
 };
 
 // ──────────────────────────────────────────────
@@ -846,6 +850,15 @@ const calcularCompatibilidad = async (idAdoptante) => {
 
 const eliminarMascota = async (idMascota, idAlbergue, motivo) => {
     try {
+        // HU-MA-04: motivo obligatorio con mínimo 10 caracteres
+        if (!motivo || motivo.trim().length < 10) {
+            return {
+                success: false,
+                status: 400,
+                message: 'El motivo de eliminación es obligatorio y debe tener al menos 10 caracteres.',
+            };
+        }
+
         return await prisma.$transaction(async (tx) => {
             const mascota = await tx.mascota.findUnique({
                 where: { id_mascota: idMascota }
@@ -859,11 +872,50 @@ const eliminarMascota = async (idMascota, idAlbergue, motivo) => {
                 return { success: false, status: 403, message: 'No tienes permiso para eliminar esta mascota.' };
             }
 
+            // HU-MA-04: No se puede eliminar una mascota adoptada
+            if (mascota.estado_adopcion === 'adoptado') {
+                return { success: false, status: 400, message: 'No se puede eliminar una mascota que ya fue adoptada.' };
+            }
+
+            // HU-MA-04: Buscar matches activos (pendiente o contactado)
+            const matchesActivos = await tx.match.findMany({
+                where: {
+                    id_mascota: idMascota,
+                    estado: { in: ['pendiente', 'contactado'] },
+                },
+                select: { id_match: true, id_adoptante: true },
+            });
+
+            // HU-MA-04: Cancelar matches activos
+            if (matchesActivos.length > 0) {
+                await tx.match.updateMany({
+                    where: {
+                        id_mascota: idMascota,
+                        estado: { in: ['pendiente', 'contactado'] },
+                    },
+                    data: { estado: 'cancelado' },
+                });
+
+                // HU-MA-04: Notificar a adoptantes afectados
+                for (const match of matchesActivos) {
+                    await tx.notificacion.create({
+                        data: {
+                            id_usuario: match.id_adoptante,
+                            tipo_notificacion: 'mascota_no_disponible',
+                            mensaje: `La mascota ${mascota.nombre} ya no está disponible.`,
+                            recurso_tipo: 'mascota',
+                            recurso_id: idMascota,
+                        }
+                    });
+                }
+            }
+
+            // Soft delete con motivo
             await tx.mascota.update({
                 where: { id_mascota: idMascota },
                 data: {
                     deleted_at: new Date(),
-                    motivo_eliminacion: motivo || null,
+                    motivo_eliminacion: motivo.trim(),
                     estado_adopcion: 'inactivo',
                 }
             });
@@ -879,13 +931,18 @@ const eliminarMascota = async (idMascota, idAlbergue, motivo) => {
                         estado: mascota.estado_adopcion,
                     }),
                     valor_nuevo: JSON.stringify({
-                        motivo: motivo || null,
+                        motivo: motivo.trim(),
                         deleted_at: new Date().toISOString(),
+                        matches_cancelados: matchesActivos.length,
                     }),
                 }
             });
 
-            return { success: true, message: 'Mascota eliminada exitosamente.' };
+            return {
+                success: true,
+                message: 'Mascota eliminada exitosamente.',
+                data: { matches_cancelados: matchesActivos.length }
+            };
         });
     } catch (err) {
         console.error('[mascotaService] eliminarMascota:', err.message);

@@ -90,6 +90,7 @@ const prisma = {
     descarte: createModelMock(),
     envioNotificacion: createModelMock(),
     configuracionSistema: createModelMock(),
+    contactoWhatsapp: createModelMock(),
 };
 
 module.exports = prisma;

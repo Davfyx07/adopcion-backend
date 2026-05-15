@@ -173,4 +173,83 @@ router.post('/descartar/:id_mascota',
     matchController.descartarMascota
 );
 
+
+/**
+ * @swagger
+ * /api/match/{id}:
+ *   get:
+ *     summary: Obtener detalle de un match
+ *     description: Retorna el detalle completo de un match perteneciente al adoptante autenticado.
+ *     tags: [Match]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Detalle del match
+ *       404:
+ *         description: Match no encontrado
+ *       403:
+ *         description: No autorizado
+ */
+router.get('/:id',
+    authMiddleware,
+    authorizeRole(['adoptante']),
+    matchController.obtenerDetalleMatch
+);
+
+
+/**
+ * @swagger
+ * /api/match/{id}/contact:
+ *   post:
+ *     summary: Contactar a un adoptante vía WhatsApp (HU-MCH-02)
+ *     description: >-
+ *       Solo el albergue dueño de la mascota puede invocar este endpoint.
+ *       Genera un enlace de WhatsApp con mensaje personalizado y actualiza
+ *       el estado del match a 'contactado' (solo en el primer contacto).
+ *     tags: [Match]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID del match
+ *     responses:
+ *       200:
+ *         description: Enlace de WhatsApp generado exitosamente
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     enlace_whatsapp:
+ *                       type: string
+ *                     estado:
+ *                       type: string
+ *       403:
+ *         description: El match no pertenece al albergue
+ *       404:
+ *         description: Match no encontrado
+ */
+router.post('/:id/contact',
+    authMiddleware,
+    authorizeRole(['albergue']),
+    matchController.contactarAdoptante
+);
+
 module.exports = router;

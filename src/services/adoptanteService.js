@@ -2,6 +2,7 @@ const prisma = require('../config/prisma');
 const { uploadImage, validateBase64Image, deleteImage } = require('./storageService');
 const { validarTagsObligatorios } = require('./etiquetaService');
 const { calcularEmbedding } = require('./embeddingService');
+const redis = require('../config/redis');
 
 /**
  * HU-US-01: Crea el perfil de un adoptante de forma atómica.
@@ -78,7 +79,7 @@ const crearPerfilAdoptante = async ({ idUsuario, nombre_completo, whatsapp, ciud
             }
 
             // 6. Calcular embedding
-            const embedding = tagIds && tagIds.length > 0 ? await calcularEmbedding(tagIds) : [];
+            const embedding = tagIds && tagIds.length > 0 ? await calcularEmbedding(tagIds, 'adoptante') : [];
 
             // 7. Crear registro en tabla Adoptante (PK compartida con Usuario)
             await tx.adoptante.create({
@@ -88,9 +89,13 @@ const crearPerfilAdoptante = async ({ idUsuario, nombre_completo, whatsapp, ciud
                     foto_perfil: fotoUrl,
                     whatsapp_adoptante: whatsapp.trim(),
                     ciudad: ciudad.trim(),
-                    embedding: embedding.length > 0 ? JSON.stringify(embedding) : null,
                 }
             });
+
+            if (embedding.length > 0) {
+                const vectorStr = `[${embedding.join(',')}]`;
+                await tx.$executeRaw`UPDATE adoptante SET embedding = ${vectorStr}::vector WHERE id_usuario = ${idUsuario}`;
+            }
 
             // 8. Guardar tags en adoptanteTag
             if (tagIds && tagIds.length > 0) {
@@ -339,7 +344,18 @@ const actualizarEtiquetasAdoptante = async ({ idUsuario, tagIds, ip }) => {
             // Recalcular embedding si cambiaron los tags
             const nuevosTags = tagIds || [];
             if (!arraysEqual([...viejosIds].sort(), [...nuevosTags].sort())) {
-                await calcularEmbedding(nuevosTags);
+                const embedding = await calcularEmbedding(nuevosTags, 'adoptante');
+                if (embedding.length > 0) {
+                    const vectorStr = `[${embedding.join(',')}]`;
+                    await tx.$executeRaw`UPDATE adoptante SET embedding = ${vectorStr}::vector WHERE id_usuario = ${idUsuario}`;
+                } else {
+                    await tx.$executeRaw`UPDATE adoptante SET embedding = NULL WHERE id_usuario = ${idUsuario}`;
+                }
+                
+                // Invalidar caché de matches para este adoptante
+                if (redis) {
+                    await redis.del(`match:${idUsuario}`);
+                }
             }
 
             // Auditoría

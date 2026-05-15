@@ -1,20 +1,19 @@
 const prisma = require('../config/prisma');
 
 /**
- * Calcula un vector de embedding binario basado en las opciones de tags seleccionadas.
- * El vector tiene longitud igual al número total de opciones en el catálogo,
- * donde cada posición vale 1.0 si la opción fue seleccionada, 0.0 si no.
- * El orden de posiciones es determinístico: opciones ordenadas por id_opcion ASC.
+ * Calcula un vector de embedding basado en las opciones de tags seleccionadas.
+ * Para Adoptante: usa los pesos configurados en la tabla Tag.
+ * Para Mascota: usa 1.0 para indicar presencia.
  *
- * NOTA: El esquema actual de BD no tiene columna 'embedding' en la tabla Adoptante.
- * Este servicio está listo para cuando se agregue dicha columna al esquema.
- *
- * @param {number[]} opcionIds - IDs de las opciones seleccionadas por el usuario
+ * @param {number[]} opcionIds - IDs de las opciones seleccionadas
+ * @param {string} tipo - 'adoptante' o 'mascota'
  * @returns {Promise<number[]>} Vector de embedding
  */
-const calcularEmbedding = async (opcionIds) => {
+const calcularEmbedding = async (opcionIds, tipo = 'mascota') => {
+    // Obtenemos todas las opciones junto con el peso de su tag
     const opciones = await prisma.opcionTag.findMany({
-        orderBy: { id_opcion: 'asc' }
+        orderBy: { id_opcion: 'asc' },
+        include: { tag: true }
     });
 
     if (opciones.length === 0) {
@@ -22,7 +21,18 @@ const calcularEmbedding = async (opcionIds) => {
     }
 
     const selectedSet = new Set(opcionIds);
-    return opciones.map(row => (selectedSet.has(row.id_opcion) ? 1.0 : 0.0));
+
+    return opciones.map(row => {
+        if (!selectedSet.has(row.id_opcion)) {
+            return 0.0;
+        }
+        
+        if (tipo === 'adoptante') {
+            return Number(row.tag.peso_matching || 0);
+        }
+        
+        return 1.0;
+    });
 };
 
 module.exports = { calcularEmbedding };
