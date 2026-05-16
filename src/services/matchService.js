@@ -3,8 +3,8 @@ const prisma = require('../config/prisma');
 
 const redis = require('../config/redis');
 
-const calcularCompatibilidad = async (idAdoptante) => {
-    const cacheKey = `match:db:${idAdoptante}`;
+const calcularCompatibilidad = async (idAdoptante, tipoAnimal = null) => {
+    const cacheKey = `match:db:${idAdoptante}:${tipoAnimal || 'all'}`;
     if (redis) {
         const cached = await redis.get(cacheKey);
         if (cached) {
@@ -14,10 +14,10 @@ const calcularCompatibilidad = async (idAdoptante) => {
 
     // Verificar si el adoptante tiene embedding
     const adoptanteRes = await prisma.$queryRaw`
-        SELECT id_usuario FROM adoptante 
+        SELECT id_usuario FROM adoptante
         WHERE id_usuario = ${idAdoptante} AND embedding IS NOT NULL
     `;
-    
+
     if (!adoptanteRes || adoptanteRes.length === 0) {
         await limpiarMatchesPendientes(idAdoptante);
         return [];
@@ -33,7 +33,19 @@ const calcularCompatibilidad = async (idAdoptante) => {
         ? Prisma.sql`AND m.id_mascota NOT IN (${Prisma.join(idsDescartados)})`
         : Prisma.empty;
 
-    // Calcular match usando pgvector y compatibilidad >= 30%
+    const tipoCondition = tipoAnimal
+        ? Prisma.sql`AND EXISTS (
+            SELECT 1 FROM mascota_tag mt2
+            JOIN opcion_tag o2 ON mt2.id_opcion = o2.id_opcion
+            JOIN tag t2 ON o2.id_tag = t2.id_tag
+            WHERE mt2.id_mascota = m.id_mascota
+              AND t2.nombre_tag = 'Tipo de animal'
+              AND o2.valor = ${tipoAnimal}
+        )`
+        : Prisma.empty;
+
+    // Calcular match usando pgvector y compatibilidad >= umbral configurable
+    const UMBRAL = parseFloat(process.env.MATCH_UMBRAL_COMPATIBILIDAD) || 30;
     const mascotasMatch = await prisma.$queryRaw`
         SELECT
             m.id_mascota,
@@ -44,11 +56,12 @@ const calcularCompatibilidad = async (idAdoptante) => {
             ROUND((1 - (m.embedding <=> (SELECT embedding FROM adoptante WHERE id_usuario = ${idAdoptante})))::numeric * 100) AS compatibilidad
         FROM mascota m
         JOIN albergue a ON m.id_albergue = a.id_usuario
-        WHERE m.estado_adopcion = 'disponible' 
-          AND m.deleted_at IS NULL 
+        WHERE m.estado_adopcion = 'disponible'
+          AND m.deleted_at IS NULL
           AND m.embedding IS NOT NULL
           ${discardCondition}
-          AND ROUND((1 - (m.embedding <=> (SELECT embedding FROM adoptante WHERE id_usuario = ${idAdoptante})))::numeric * 100) >= 30
+          ${tipoCondition}
+          AND ROUND((1 - (m.embedding <=> (SELECT embedding FROM adoptante WHERE id_usuario = ${idAdoptante})))::numeric * 100) >= ${UMBRAL}
         ORDER BY m.embedding <=> (SELECT embedding FROM adoptante WHERE id_usuario = ${idAdoptante}) ASC
     `;
 

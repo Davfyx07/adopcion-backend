@@ -6,6 +6,7 @@ const {
     listarAdopcionesAlbergue,
     obtenerDetalleAdopcion,
     exportarAdopcionesCSV,
+    exportarAdopcionesExcel,
 } = require('../controllers/adopcionHistorialController');
 
 /**
@@ -88,6 +89,43 @@ router.get(
     authMiddleware,
     authorizeRole(['albergue']),
     exportarAdopcionesCSV
+);
+
+/**
+ * @swagger
+ * /api/albergue/adopciones/exportar-excel:
+ *   get:
+ *     summary: Exportar adopciones del albergue en Excel
+ *     tags: [AdopcionHistorial]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: fecha_desde
+ *         schema: { type: string, format: date }
+ *       - in: query
+ *         name: fecha_hasta
+ *         schema: { type: string, format: date }
+ *       - in: query
+ *         name: estado
+ *         schema: { type: string }
+ *       - in: query
+ *         name: busqueda
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Archivo Excel (.xlsx) con adopciones
+ *         content:
+ *           application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+ *             schema:
+ *               type: string
+ *               format: binary
+ */
+router.get(
+    '/exportar-excel',
+    authMiddleware,
+    authorizeRole(['albergue']),
+    exportarAdopcionesExcel
 );
 
 module.exports = router;

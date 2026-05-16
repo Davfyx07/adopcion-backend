@@ -3,7 +3,8 @@ const matchService = require('../services/matchService');
 const calcularMatch = async (req, res) => {
     try {
         const idAdoptante = req.user.id;
-        const resultados = await matchService.calcularCompatibilidad(idAdoptante);
+        const { tipoAnimal } = req.body;
+        const resultados = await matchService.calcularCompatibilidad(idAdoptante, tipoAnimal);
 
         return res.status(200).json({
             success: true,

@@ -86,8 +86,40 @@ const exportarAdopcionesCSV = async (req, res) => {
     }
 };
 
+/**
+ * HU-HIS-02: GET /api/albergue/adopciones/exportar-excel
+ */
+const exportarAdopcionesExcel = async (req, res) => {
+    try {
+        const idAlbergue = req.user.id;
+        const { fecha_desde, fecha_hasta, estado, busqueda } = req.query;
+
+        const result = await adopcionHistorialService.exportarAdopcionesExcel(idAlbergue, {
+            fecha_desde,
+            fecha_hasta,
+            estado,
+            busqueda,
+        });
+
+        if (!result.success) {
+            return res.status(result.status).json(result);
+        }
+
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename="adopciones_${Date.now()}.xlsx"`);
+        return res.status(200).send(result.buffer);
+    } catch (error) {
+        console.error('[adopcionHistorialController] exportarAdopcionesExcel:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Error interno al exportar adopciones a Excel.',
+        });
+    }
+};
+
 module.exports = {
     listarAdopcionesAlbergue,
     obtenerDetalleAdopcion,
     exportarAdopcionesCSV,
+    exportarAdopcionesExcel,
 };

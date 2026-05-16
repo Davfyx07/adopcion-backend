@@ -2,7 +2,6 @@ const { Prisma } = require('@prisma/client');
 const prisma = require('../config/prisma');
 const { uploadImage, deleteImage } = require('./storageService');
 const { calcularEmbedding } = require('./embeddingService');
-const redis = require('../config/redis');
 
 // ──────────────────────────────────────────────
 // Helpers
@@ -746,105 +745,6 @@ const listarMisMascotas = async (idAlbergue, { page, limit }) => {
 };
 
 // ──────────────────────────────────────────────
-// HU-PM-06: Calcular compatibilidad (matching)
-// ──────────────────────────────────────────────
-
-const calcularCompatibilidad = async (idAdoptante) => {
-    const cacheKey = `match:${idAdoptante}`;
-    if (redis) {
-        const cached = await redis.get(cacheKey);
-        if (cached) {
-            return typeof cached === 'string' ? JSON.parse(cached) : cached;
-        }
-    }
-
-    // Verificar si el adoptante tiene embedding
-    const adoptanteRes = await prisma.$queryRaw`
-        SELECT id_usuario FROM adoptante 
-        WHERE id_usuario = ${idAdoptante} AND embedding IS NOT NULL
-    `;
-    
-    if (!adoptanteRes || adoptanteRes.length === 0) {
-        return [];
-    }
-
-    // Calcular match usando pgvector (distancia coseno < 1.0)
-    // distance = m.embedding <=> a.embedding
-    // similarity = (1 - distance) * 100
-    // Filtramos para score > 0 (distance < 1.0)
-    const mascotasMatch = await prisma.$queryRaw`
-        SELECT
-            m.id_mascota,
-            m.nombre,
-            m.descripcion,
-            a.id_usuario AS id_albergue,
-            a.nombre_albergue,
-            ROUND((1 - (m.embedding <=> (SELECT embedding FROM adoptante WHERE id_usuario = ${idAdoptante})))::numeric * 100) AS compatibilidad
-        FROM mascota m
-        JOIN albergue a ON m.id_albergue = a.id_usuario
-        WHERE m.estado_adopcion = 'disponible' 
-          AND m.deleted_at IS NULL 
-          AND m.embedding IS NOT NULL
-          AND (1 - (m.embedding <=> (SELECT embedding FROM adoptante WHERE id_usuario = ${idAdoptante}))) > 0
-        ORDER BY m.embedding <=> (SELECT embedding FROM adoptante WHERE id_usuario = ${idAdoptante}) ASC
-        LIMIT 10
-    `;
-
-    if (mascotasMatch.length === 0) {
-        return [];
-    }
-
-    const mascotaIds = mascotasMatch.map(m => m.id_mascota);
-
-    // Foto principal de cada mascota (batch)
-    const fotosMap = new Map();
-    if (mascotaIds.length > 0) {
-        const fotos = await prisma.$queryRaw`
-            SELECT DISTINCT ON (id_mascota) id_mascota, url_foto
-            FROM mascota_foto
-            WHERE id_mascota = ANY(${mascotaIds})
-            ORDER BY id_mascota, orden ASC
-        `;
-        for (const f of fotos) {
-            fotosMap.set(f.id_mascota, f.url_foto);
-        }
-    }
-
-    // Tags detalle de todas las mascotas (batch)
-    const allTagsDetalle = await prisma.$queryRaw`
-        SELECT mt.id_mascota, o.valor, t.nombre_tag
-        FROM mascota_tag mt
-        JOIN opcion_tag o ON mt.id_opcion = o.id_opcion
-        JOIN tag t ON o.id_tag = t.id_tag
-        WHERE mt.id_mascota = ANY(${mascotaIds})
-    `;
-    const tagsDetallePorMascota = new Map();
-    for (const t of allTagsDetalle) {
-        if (!tagsDetallePorMascota.has(t.id_mascota)) {
-            tagsDetallePorMascota.set(t.id_mascota, []);
-        }
-        tagsDetallePorMascota.get(t.id_mascota).push({ valor: t.valor, nombre_tag: t.nombre_tag });
-    }
-
-    const resultados = mascotasMatch.map(mascota => ({
-        id_mascota: mascota.id_mascota,
-        nombre: mascota.nombre,
-        descripcion: mascota.descripcion,
-        id_albergue: mascota.id_albergue,
-        nombre_albergue: mascota.nombre_albergue,
-        foto: fotosMap.get(mascota.id_mascota) || null,
-        compatibilidad: Number(mascota.compatibilidad),
-        tags: tagsDetallePorMascota.get(mascota.id_mascota) || [],
-    }));
-
-    if (redis) {
-        await redis.set(cacheKey, JSON.stringify(resultados), { ex: 3600 });
-    }
-
-    return resultados;
-};
-
-// ──────────────────────────────────────────────
 // Soft Delete de Mascota
 // ──────────────────────────────────────────────
 
@@ -1126,7 +1026,6 @@ module.exports = {
     cambiarEstadoMascota,
     listarFeed,
     listarMisMascotas,
-    calcularCompatibilidad,
     eliminarMascota,
     registrarMatch,
     obtenerMatches,
