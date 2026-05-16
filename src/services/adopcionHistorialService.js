@@ -1,5 +1,6 @@
 const { Prisma } = require('@prisma/client');
 const prisma = require('../config/prisma');
+const xlsx = require('xlsx');
 
 // ──────────────────────────────────────────────
 // HU-HIS-02: Historial de adopciones del albergue
@@ -225,8 +226,73 @@ const exportarAdopcionesCSV = async (idAlbergue, {
     }
 };
 
+/**
+ * HU-HIS-02: Exportar adopciones del albergue en Excel (.xlsx).
+ * Máximo 10,000 registros.
+ */
+const exportarAdopcionesExcel = async (idAlbergue, {
+    fecha_desde,
+    fecha_hasta,
+    estado,
+    busqueda,
+} = {}) => {
+    try {
+        const conditions = [
+            Prisma.sql`m.id_albergue = ${idAlbergue}`,
+            Prisma.sql`m.deleted_at IS NULL`,
+        ];
+
+        if (estado) conditions.push(Prisma.sql`a.estado = ${estado}`);
+        if (fecha_desde) conditions.push(Prisma.sql`a.fecha >= ${new Date(fecha_desde)}`);
+        if (fecha_hasta) conditions.push(Prisma.sql`a.fecha <= ${new Date(fecha_hasta)}`);
+        if (busqueda) {
+            const q = `%${busqueda}%`;
+            conditions.push(Prisma.sql`(m.nombre ILIKE ${q} OR ad.nombre_completo ILIKE ${q})`);
+        }
+
+        const whereClause = Prisma.join(conditions, ' AND ');
+
+        const rows = await prisma.$queryRaw`
+            SELECT
+                a.fecha AS "Fecha",
+                m.nombre AS "Mascota",
+                ad.nombre_completo AS "Adoptante",
+                u.correo AS "Email",
+                a.porcentaje_compatibilidad AS "Porcentaje",
+                a.estado AS "Estado",
+                a.observaciones AS "Observaciones"
+            FROM adopcion a
+            JOIN mascota m ON a.id_mascota = m.id_mascota
+            JOIN adoptante ad ON a.id_adoptante = ad.id_usuario
+            JOIN usuario u ON ad.id_usuario = u.id_usuario
+            WHERE ${whereClause}
+            ORDER BY a.fecha DESC
+            LIMIT 10000
+        `;
+
+        if (rows.length === 0) {
+            return { success: false, status: 404, message: 'No hay adopciones para exportar.' };
+        }
+
+        const worksheet = xlsx.utils.json_to_sheet(rows);
+        const workbook = xlsx.utils.book_new();
+        xlsx.utils.book_append_sheet(workbook, worksheet, 'Adopciones');
+        const buffer = xlsx.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+
+        return {
+            success: true,
+            buffer,
+            total: rows.length,
+        };
+    } catch (err) {
+        console.error('[adopcionService] exportarAdopcionesExcel:', err.message);
+        throw err;
+    }
+};
+
 module.exports = {
     listarAdopcionesAlbergue,
     obtenerDetalleAdopcion,
     exportarAdopcionesCSV,
+    exportarAdopcionesExcel,
 };

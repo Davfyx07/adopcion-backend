@@ -199,3 +199,37 @@ describe('adopcionHistorialService — exportarAdopcionesCSV (HU-HIS-02)', () =>
         expect(result.csv).toContain('"Luna, la perrita"');
     });
 });
+
+describe('adopcionHistorialService — exportarAdopcionesExcel (HU-HIS-02)', () => {
+    beforeEach(() => jest.clearAllMocks());
+
+    it('retorna 404 si no hay registros para exportar', async () => {
+        prisma.$queryRaw.mockResolvedValueOnce([]);
+
+        const result = await adopcionHistorialService.exportarAdopcionesExcel(ID_ALBERGUE);
+
+        expect(result.success).toBe(false);
+        expect(result.status).toBe(404);
+    });
+
+    it('genera buffer Excel (.xlsx) con datos correctos', async () => {
+        prisma.$queryRaw.mockResolvedValueOnce([
+            {
+                'Fecha': new Date('2024-01-15'),
+                'Mascota': 'Luna',
+                'Adoptante': 'Juan Pérez',
+                'Email': 'juan@test.com',
+                'Porcentaje': 75,
+                'Estado': 'en_proceso',
+                'Observaciones': 'Sin observaciones',
+            },
+        ]);
+
+        const result = await adopcionHistorialService.exportarAdopcionesExcel(ID_ALBERGUE);
+
+        expect(result.success).toBe(true);
+        expect(Buffer.isBuffer(result.buffer)).toBe(true);
+        expect(result.buffer.length).toBeGreaterThan(0);
+        expect(result.total).toBe(1);
+    });
+});

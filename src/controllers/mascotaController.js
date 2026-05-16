@@ -1,4 +1,5 @@
 const mascotaService = require('../services/mascotaService');
+const matchService = require('../services/matchService');
 
 const crearMascota = async (req, res) => {
     try {
@@ -146,7 +147,8 @@ const feed = async (req, res) => {
 const match = async (req, res) => {
     try {
         const idAdoptante = req.user.id;
-        const result = await mascotaService.calcularCompatibilidad(idAdoptante);
+        const { tipo } = req.query;
+        const result = await matchService.calcularCompatibilidad(idAdoptante, tipo);
 
         return res.status(200).json({
             success: true,

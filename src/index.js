@@ -71,7 +71,7 @@ app.use('/api', tagRoutes);
 app.use('/api/notificaciones', notificacionRoutes);
 
 app.use('/api/recomendaciones', recomendacionRoutes);
-app.use('/api/match', matchRoutes);
+app.use('/api', matchRoutes);
 app.use('/api/adopciones', adopcionRoutes);
 app.use('/api/shelters/matches', albergueMatchRoutes);
 app.use('/api/albergue/adopciones', adopcionHistorialRoutes);
