@@ -116,4 +116,29 @@ router.post(
     adopcionController.registrarAdopcion
 );
 
+/**
+ * @swagger
+ * /api/adopciones/{id}:
+ *   get:
+ *     summary: Obtener detalle completo de una adopción
+ *     tags: [Adopciones]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Detalle de la adopción
+ */
+router.get(
+    '/:id',
+    authMiddleware,
+    authorizeRole(['albergue']),
+    adopcionController.getAdopcionDetail
+);
+
 module.exports = router;

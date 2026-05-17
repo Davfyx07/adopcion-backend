@@ -189,4 +189,189 @@ const registrarAdopcion = async ({
     }
 };
 
-module.exports = { registrarAdopcion };
+// ──────────────────────────────────────────────
+// Obtener adopciones de un albergue con filtros y paginación
+// ──────────────────────────────────────────────
+const getAdopcionesAlbergue = async (idAlbergue, filters) => {
+    try {
+        const { fecha_desde, fecha_hasta, estado, busqueda, page = 1, limit = 20 } = filters;
+        const skip = (page - 1) * limit;
+
+        const whereClause = {
+            mascota: { id_albergue: idAlbergue }
+        };
+
+        if (fecha_desde || fecha_hasta) {
+            whereClause.fecha = {};
+            if (fecha_desde) whereClause.fecha.gte = new Date(fecha_desde);
+            if (fecha_hasta) whereClause.fecha.lte = new Date(fecha_hasta);
+        }
+
+        if (estado) {
+            whereClause.estado = estado;
+        }
+
+        if (busqueda) {
+            whereClause.OR = [
+                { mascota: { nombre: { contains: busqueda, mode: 'insensitive' } } },
+                { adoptante: { nombre_completo: { contains: busqueda, mode: 'insensitive' } } }
+            ];
+        }
+
+        const [total, adopciones] = await Promise.all([
+            prisma.adopcion.count({ where: whereClause }),
+            prisma.adopcion.findMany({
+                where: whereClause,
+                skip: Number(skip),
+                take: Number(limit),
+                orderBy: { fecha: 'desc' },
+                include: {
+                    mascota: { select: { nombre: true } },
+                    adoptante: { select: { nombre_completo: true } }
+                }
+            })
+        ]);
+
+        const formattedAdopciones = adopciones.map(a => ({
+            id_adopcion: a.id_adopcion,
+            nombre_mascota: a.mascota?.nombre,
+            nombre_adoptante: a.adoptante?.nombre_completo,
+            fecha_adopcion: a.fecha,
+            estado: a.estado,
+            porcentaje_compatibilidad: a.porcentaje_compatibilidad
+        }));
+
+        return {
+            success: true,
+            data: formattedAdopciones,
+            meta: {
+                total,
+                page: Number(page),
+                limit: Number(limit),
+                totalPages: Math.ceil(total / limit)
+            }
+        };
+    } catch (error) {
+        console.error('[adopcionService] Error en getAdopcionesAlbergue:', error);
+        throw error;
+    }
+};
+
+// ──────────────────────────────────────────────
+// Obtener detalle completo de una adopción
+// ──────────────────────────────────────────────
+const getAdopcionDetail = async (idAlbergue, idAdopcion) => {
+    try {
+        const adopcion = await prisma.adopcion.findUnique({
+            where: { id_adopcion: idAdopcion },
+            include: {
+                mascota: true,
+                adoptante: {
+                    include: {
+                        usuario: { select: { correo: true } }
+                    }
+                }
+            }
+        });
+
+        if (!adopcion) {
+            return { success: false, status: 404, message: 'Adopción no encontrada.' };
+        }
+
+        if (adopcion.mascota.id_albergue !== idAlbergue) {
+            return { success: false, status: 403, message: 'No tienes permiso para ver esta adopción.' };
+        }
+
+        return { success: true, data: adopcion };
+    } catch (error) {
+        console.error('[adopcionService] Error en getAdopcionDetail:', error);
+        throw error;
+    }
+};
+
+// ──────────────────────────────────────────────
+// Exportar adopciones
+// ──────────────────────────────────────────────
+const exportarAdopcionesAlbergue = async (idAlbergue, filters) => {
+    try {
+        const { fecha_desde, fecha_hasta, estado, busqueda, format = 'csv' } = filters;
+
+        const whereClause = {
+            mascota: { id_albergue: idAlbergue }
+        };
+
+        if (fecha_desde || fecha_hasta) {
+            whereClause.fecha = {};
+            if (fecha_desde) whereClause.fecha.gte = new Date(fecha_desde);
+            if (fecha_hasta) whereClause.fecha.lte = new Date(fecha_hasta);
+        }
+
+        if (estado) {
+            whereClause.estado = estado;
+        }
+
+        if (busqueda) {
+            whereClause.OR = [
+                { mascota: { nombre: { contains: busqueda, mode: 'insensitive' } } },
+                { adoptante: { nombre_completo: { contains: busqueda, mode: 'insensitive' } } }
+            ];
+        }
+
+        const adopciones = await prisma.adopcion.findMany({
+            where: whereClause,
+            take: 10000,
+            orderBy: { fecha: 'desc' },
+            include: {
+                mascota: { select: { nombre: true } },
+                adoptante: {
+                    select: {
+                        nombre_completo: true,
+                        usuario: { select: { correo: true } }
+                    }
+                }
+            }
+        });
+
+        const dataToExport = adopciones.map(a => ({
+            Fecha: a.fecha ? a.fecha.toISOString().split('T')[0] : '',
+            Mascota: a.mascota?.nombre || '',
+            Adoptante: a.adoptante?.nombre_completo || '',
+            Email: a.adoptante?.usuario?.correo || '',
+            Porcentaje: a.porcentaje_compatibilidad ? Number(a.porcentaje_compatibilidad).toString() : '',
+            Estado: a.estado || '',
+            Observaciones: a.observaciones || ''
+        }));
+
+        if (format === 'excel') {
+            const ExcelJS = require('exceljs');
+            const workbook = new ExcelJS.Workbook();
+            const sheet = workbook.addWorksheet('Adopciones');
+            
+            sheet.columns = [
+                { header: 'Fecha', key: 'Fecha', width: 15 },
+                { header: 'Mascota', key: 'Mascota', width: 25 },
+                { header: 'Adoptante', key: 'Adoptante', width: 30 },
+                { header: 'Email', key: 'Email', width: 35 },
+                { header: 'Porcentaje', key: 'Porcentaje', width: 15 },
+                { header: 'Estado', key: 'Estado', width: 15 },
+                { header: 'Observaciones', key: 'Observaciones', width: 40 }
+            ];
+            
+            dataToExport.forEach(row => sheet.addRow(row));
+            
+            const buffer = await workbook.xlsx.writeBuffer();
+            return { success: true, format: 'excel', buffer };
+        } else {
+            const { Parser } = require('json2csv');
+            const fields = ['Fecha', 'Mascota', 'Adoptante', 'Email', 'Porcentaje', 'Estado', 'Observaciones'];
+            const json2csvParser = new Parser({ fields });
+            const csv = json2csvParser.parse(dataToExport);
+            return { success: true, format: 'csv', data: csv };
+        }
+    } catch (error) {
+        console.error('[adopcionService] Error en exportarAdopcionesAlbergue:', error);
+        throw error;
+    }
+};
+
+module.exports = { registrarAdopcion, getAdopcionesAlbergue, getAdopcionDetail, exportarAdopcionesAlbergue };

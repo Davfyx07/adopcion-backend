@@ -141,5 +141,37 @@ router.get('/perfil', authMiddleware, authorizeRole(['albergue']), getPerfil);
  *         description: Error de validación (ej. intento de modificar NIT).
  */
 router.put('/perfil', authMiddleware, authorizeRole(['albergue']), validateUpdatePerfil, updatePerfil);
+const {
+    getAdopcionesAlbergue,
+    exportarAdopcionesAlbergue
+} = require('../controllers/adopcionController');
+
+/**
+ * @swagger
+ * /api/albergue/adopciones/exportar:
+ *   get:
+ *     summary: Exportar adopciones
+ *     tags: [Albergue, Adopciones]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Archivo exportado
+ */
+router.get('/adopciones/exportar', authMiddleware, authorizeRole(['albergue']), exportarAdopcionesAlbergue);
+
+/**
+ * @swagger
+ * /api/albergue/adopciones:
+ *   get:
+ *     summary: Lista de adopciones del albergue
+ *     tags: [Albergue, Adopciones]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Lista de adopciones
+ */
+router.get('/adopciones', authMiddleware, authorizeRole(['albergue']), getAdopcionesAlbergue);
 
 module.exports = router;
