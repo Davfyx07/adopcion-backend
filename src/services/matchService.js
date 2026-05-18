@@ -396,15 +396,19 @@ const obtenerDetalleMatch = async (idMatch, idAdoptante) => {
 
     try {
 
-        const match = await prisma.match.findFirst({
-            where: {
-                id_match: idMatch,
-                id_adoptante: idAdoptante,
-            },
+  const match = await prisma.match.findFirst({
+      where: {
+        id_match: idMatch,
+        id_adoptante: idAdoptante,
+      },
 
-            include: {
+      include: {
 
-                mascota: {
+        contacto_whatsapp: {
+          orderBy: { fecha_contacto: 'desc' },
+        },
+
+        mascota: {
 
                     include: {
 
@@ -484,15 +488,22 @@ const obtenerDetalleMatch = async (idMatch, idAdoptante) => {
                     })),
                 },
 
-                albergue: {
-                    id_usuario: match.mascota.albergue.id_usuario,
-                    nombre_albergue: match.mascota.albergue.nombre_albergue,
-                    descripcion: match.mascota.albergue.descripcion,
-                    whatsapp: match.mascota.albergue.whatsapp_actual,
-                    sitio_web: match.mascota.albergue.sitio_web,
-                    logo: match.mascota.albergue.logo,
-                }
-            }
+      albergue: {
+        id_usuario: match.mascota.albergue.id_usuario,
+        nombre_albergue: match.mascota.albergue.nombre_albergue,
+        descripcion: match.mascota.albergue.descripcion,
+        whatsapp: match.mascota.albergue.whatsapp_actual,
+        sitio_web: match.mascota.albergue.sitio_web,
+        logo: match.mascota.albergue.logo,
+      },
+
+      contactos: (match.contacto_whatsapp || []).map(c => ({
+        id_contacto: c.id_contacto,
+        fecha: c.fecha_contacto,
+        mensaje: c.mensaje_enviado,
+        estado: c.estado,
+      })),
+    }
         };
 
     } catch (err) {
