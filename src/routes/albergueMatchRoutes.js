@@ -3,8 +3,10 @@ const router = express.Router();
 const authMiddleware = require('../middlewares/authMiddleware');
 const authorizeRole = require('../middlewares/authorizeRole');
 const {
-    listarMatchesAlbergue,
-    obtenerDetalleMatchAlbergue,
+  listarMatchesAlbergue,
+  obtenerDetalleMatchAlbergue,
+  contactarAdoptante,
+  obtenerHistorialContactos,
 } = require('../controllers/albergueMatchController');
 
 /**
@@ -95,10 +97,70 @@ router.get(
  *         description: No autorizado
  */
 router.get(
-    '/:id',
-    authMiddleware,
-    authorizeRole(['albergue']),
-    obtenerDetalleMatchAlbergue
+  '/:id',
+  authMiddleware,
+  authorizeRole(['albergue']),
+  obtenerDetalleMatchAlbergue
+);
+
+/**
+ * @swagger
+ * /api/shelters/matches/{id}/contact:
+ *   post:
+ *     summary: Contactar adoptante vía WhatsApp
+ *     tags: [AlbergueMatch]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Enlace de WhatsApp generado y contacto registrado
+ *       400:
+ *         description: Adoptante sin WhatsApp o ID inválido
+ *       403:
+ *         description: No autorizado
+ *       404:
+ *         description: Match no encontrado
+ */
+router.post(
+  '/:id/contact',
+  authMiddleware,
+  authorizeRole(['albergue']),
+  contactarAdoptante
+);
+
+/**
+ * @swagger
+ * /api/shelters/matches/{id}/historial:
+ *   get:
+ *     summary: Historial de contactos WhatsApp de un match
+ *     tags: [AlbergueMatch]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Lista de contactos registrados
+ *       403:
+ *         description: No autorizado
+ *       404:
+ *         description: Match no encontrado
+ */
+router.get(
+  '/:id/historial',
+  authMiddleware,
+  authorizeRole(['albergue']),
+  obtenerHistorialContactos
 );
 
 module.exports = router;
