@@ -6,7 +6,7 @@ const { PrismaPg } = require('@prisma/adapter-pg');
 // Prisma 7 requiere un driver adapter.
 // Usa DATABASE_URL directamente — una sola variable de entorno.
 // ──────────────────────────────────────────────
-const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
+const adapter = new PrismaPg({ connectionString: process.env.DB_URL });
 
 const basePrisma = new PrismaClient({
   adapter,
