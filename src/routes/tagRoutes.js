@@ -18,37 +18,37 @@ const {
   deleteOpcion
 } = require('../controllers/tagController');
 
-router.get('/admin/etiquetas', authMiddleware, authorizeRole(['admin']), getTags);
+router.get('/admin/etiquetas', authMiddleware, authorizeRole(['administrador']), getTags);
 
 router.post('/admin/etiquetas',
     authMiddleware,
-    authorizeRole(['admin']),
+    authorizeRole(['administrador']),
     validateCreateTag,
     createTag
 );
 
 router.put('/admin/etiquetas/:id',
     authMiddleware,
-    authorizeRole(['admin']),
+    authorizeRole(['administrador']),
     validateUpdateTag,
     updateTag
 );
 
 router.delete('/admin/etiquetas/:id',
     authMiddleware,
-    authorizeRole(['admin']),
+    authorizeRole(['administrador']),
     deleteTag
 );
 
 router.post('/admin/etiquetas/:id/opciones',
   authMiddleware,
-  authorizeRole(['admin']),
+  authorizeRole(['administrador']),
   addOpciones
 );
 
 router.delete('/admin/etiquetas/:id/opciones/:idOpcion',
   authMiddleware,
-  authorizeRole(['admin']),
+  authorizeRole(['administrador']),
   deleteOpcion
 );
 
