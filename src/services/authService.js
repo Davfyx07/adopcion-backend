@@ -281,6 +281,7 @@ const loginUser = async ({ email, password, ip }) => {
             const payload = {
                 id: user.id_usuario,
                 role: user.rol.nombre_rol.toLowerCase(),
+                estado_cuenta: user.estado_cuenta,
             };
 
             const token = jwt.sign(payload, process.env.JWT_SECRET, {
@@ -352,7 +353,7 @@ const forgotPassword = async ({ email, ip }) => {
                 }
             });
 
-            const baseUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+            const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
             const enlace = `${baseUrl}/reset-password?token=${token}`;
             await enviarCorreoRecuperacion(email, enlace);
 
