@@ -18,7 +18,7 @@ const prisma = require('../config/prisma');
 
 // ── authMiddleware controlable por header ─────────────────────
 jest.mock('../middlewares/authMiddleware', () => (req, res, next) => {
-    const role = req.headers['x-test-role'] || 'admin';
+    const role = req.headers['x-test-role'] || 'administrador';
     if (role === 'none') {
         return res.status(401).json({ success: false, message: 'Token requerido o formato inválido.' });
     }
@@ -92,7 +92,7 @@ describe('Admin User Management (HU-ADM-01)', () => {
             const res = await request(app)
                 .get('/api/admin/usuarios')
                 .set('Authorization', 'Bearer mock-token')
-                .set('x-test-role', 'admin')
+                .set('x-test-role', 'administrador')
                 .set('x-test-user-id', '1');
 
             expect(res.status).toBe(200);
@@ -123,7 +123,7 @@ describe('Admin User Management (HU-ADM-01)', () => {
             const res = await request(app)
                 .get('/api/admin/usuarios?rol=1')
                 .set('Authorization', 'Bearer mock-token')
-                .set('x-test-role', 'admin')
+                .set('x-test-role', 'administrador')
                 .set('x-test-user-id', '1');
 
             expect(res.status).toBe(200);
@@ -156,7 +156,7 @@ describe('Admin User Management (HU-ADM-01)', () => {
             const res = await request(app)
                 .patch('/api/admin/usuarios/2/estado')
                 .set('Authorization', 'Bearer mock-token')
-                .set('x-test-role', 'admin')
+                .set('x-test-role', 'administrador')
                 .set('x-test-user-id', '1') // admin ID = 1, target ID = 2
                 .send({ estado: 'suspendido', motivo: 'Incumplimiento de normas' });
 
@@ -169,7 +169,7 @@ describe('Admin User Management (HU-ADM-01)', () => {
             const res = await request(app)
                 .patch('/api/admin/usuarios/1/estado')
                 .set('Authorization', 'Bearer mock-token')
-                .set('x-test-role', 'admin')
+                .set('x-test-role', 'administrador')
                 .set('x-test-user-id', '1') // admin ID = 1, target ID = 1 → mismo
                 .send({ estado: 'suspendido' });
 
@@ -195,7 +195,7 @@ describe('Admin User Management (HU-ADM-01)', () => {
             const res = await request(app)
                 .delete('/api/admin/usuarios/2')
                 .set('Authorization', 'Bearer mock-token')
-                .set('x-test-role', 'admin')
+                .set('x-test-role', 'administrador')
                 .set('x-test-user-id', '1'); // admin ID = 1, target ID = 2
 
             expect(res.status).toBe(200);
@@ -214,7 +214,7 @@ describe('Admin User Management (HU-ADM-01)', () => {
             const res = await request(app)
                 .delete('/api/admin/usuarios/1')
                 .set('Authorization', 'Bearer mock-token')
-                .set('x-test-role', 'admin')
+                .set('x-test-role', 'administrador')
                 .set('x-test-user-id', '1'); // admin ID = 1, target ID = 1 → mismo
 
             expect(res.status).toBe(400);

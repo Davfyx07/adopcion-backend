@@ -2,7 +2,7 @@
  * adminUserRoutes.js — HU-ADM-01
  *
  * Rutas de administración de usuarios.
- * Requiere rol 'admin' (ver tagRoutes.js — develop usa 'admin', fix-auth-flow usa 'administrador').
+ * Requiere rol 'administrador' (valor real del JWT generado por el backend).
  */
 
 const express = require('express');
@@ -20,22 +20,23 @@ const {
 router.get(
     '/admin/usuarios',
     authMiddleware,
-    authorizeRole(['admin', 'administrador']),
+    authorizeRole(['administrador']),
     getUsuarios
 );
 
 router.patch(
     '/admin/usuarios/:id/estado',
     authMiddleware,
-    authorizeRole(['admin', 'administrador']),
+    authorizeRole(['administrador']),
     cambiarEstado
 );
 
 router.delete(
     '/admin/usuarios/:id',
     authMiddleware,
-    authorizeRole(['admin', 'administrador']),
+    authorizeRole(['administrador']),
     eliminarUsuario
 );
 
 module.exports = router;
+
