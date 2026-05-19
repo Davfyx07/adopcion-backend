@@ -84,9 +84,9 @@ const getEstadisticas = async () => {
             al.nombre_albergue             AS nombre,
             COUNT(ad.id_adopcion)::int     AS adopciones
         FROM albergue AS al
-        JOIN mascota  AS ma ON ma.id_albergue = al.id_albergue
+        JOIN mascota  AS ma ON ma.id_albergue = al.id_usuario
         JOIN adopcion AS ad ON ad.id_mascota  = ma.id_mascota
-        GROUP BY al.id_albergue, al.nombre_albergue
+        GROUP BY al.id_usuario, al.nombre_albergue
         ORDER BY adopciones DESC
         LIMIT 5
     `;
