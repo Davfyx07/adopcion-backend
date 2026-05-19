@@ -2,9 +2,11 @@ const prisma = require('../config/prisma');
 
 /**
  * Retorna estadísticas KPI para el dashboard de administrador.
- * Cubre: usuarios, mascotas, matching y ranking de albergues.
- *
- * @returns {Promise<Object>} Objeto con las métricas del sistema
+ * Usa los nombres de campo reales del schema Prisma:
+ *   - usuario.id_rol (1=adoptante, 2=albergue, 3=administrador)
+ *   - usuario.estado_cuenta ('activo', 'suspendido', 'perfil_incompleto', etc.)
+ *   - mascota.estado_adopcion ('disponible', 'en_proceso', 'adoptado', 'archivado')
+ *   - albergue.nombre_albergue
  */
 const getEstadisticas = async () => {
     // ── USUARIOS ──────────────────────────────────────────────────
@@ -18,50 +20,23 @@ const getEstadisticas = async () => {
         totalConPerfil,
         totalUsuarios,
     ] = await Promise.all([
-        // Adoptantes: usuarios con rol 'adoptante'
-        prisma.usuario.count({
-            where: {
-                usuario_rol: { some: { rol: { nombre: 'adoptante' } } },
-            },
-        }),
-        prisma.usuario.count({
-            where: {
-                estado: 'activo',
-                usuario_rol: { some: { rol: { nombre: 'adoptante' } } },
-            },
-        }),
-        prisma.usuario.count({
-            where: {
-                estado: 'inactivo',
-                usuario_rol: { some: { rol: { nombre: 'adoptante' } } },
-            },
-        }),
-        // Albergues: usuarios con rol 'albergue'
-        prisma.usuario.count({
-            where: {
-                usuario_rol: { some: { rol: { nombre: 'albergue' } } },
-            },
-        }),
-        prisma.usuario.count({
-            where: {
-                estado: 'activo',
-                usuario_rol: { some: { rol: { nombre: 'albergue' } } },
-            },
-        }),
+        // id_rol 1 = adoptante
+        prisma.usuario.count({ where: { id_rol: 1 } }),
+        prisma.usuario.count({ where: { id_rol: 1, estado_cuenta: 'activo' } }),
+        prisma.usuario.count({ where: { id_rol: 1, estado_cuenta: { notIn: ['activo', 'suspendido'] } } }),
+        // id_rol 2 = albergue
+        prisma.usuario.count({ where: { id_rol: 2 } }),
+        prisma.usuario.count({ where: { id_rol: 2, estado_cuenta: 'activo' } }),
         // Suspendidos (cualquier rol)
-        prisma.usuario.count({ where: { estado: 'suspendido' } }),
-        // Usuarios con perfil completo (estado != 'perfil_incompleto')
-        prisma.usuario.count({
-            where: { estado: { not: 'perfil_incompleto' } },
-        }),
-        // Total usuarios (para tasa de completitud)
+        prisma.usuario.count({ where: { estado_cuenta: 'suspendido' } }),
+        // Perfil completo = estado_cuenta != 'perfil_incompleto'
+        prisma.usuario.count({ where: { estado_cuenta: { not: 'perfil_incompleto' } } }),
         prisma.usuario.count(),
     ]);
 
-    const tasaCompletitud =
-        totalUsuarios > 0
-            ? Math.round((totalConPerfil / totalUsuarios) * 100)
-            : 0;
+    const tasaCompletitud = totalUsuarios > 0
+        ? Math.round((totalConPerfil / totalUsuarios) * 100)
+        : 0;
 
     // ── MASCOTAS ──────────────────────────────────────────────────
     const [
@@ -72,10 +47,10 @@ const getEstadisticas = async () => {
         archivado,
     ] = await Promise.all([
         prisma.mascota.count(),
-        prisma.mascota.count({ where: { estado: 'disponible' } }),
-        prisma.mascota.count({ where: { estado: 'en_proceso' } }),
-        prisma.mascota.count({ where: { estado: 'adoptado' } }),
-        prisma.mascota.count({ where: { estado: 'archivado' } }),
+        prisma.mascota.count({ where: { estado_adopcion: 'disponible' } }),
+        prisma.mascota.count({ where: { estado_adopcion: 'en_proceso' } }),
+        prisma.mascota.count({ where: { estado_adopcion: 'adoptado' } }),
+        prisma.mascota.count({ where: { estado_adopcion: 'archivado' } }),
     ]);
 
     // ── MATCHING ──────────────────────────────────────────────────
@@ -85,7 +60,6 @@ const getEstadisticas = async () => {
     ]);
 
     // Adopciones por mes — últimos 6 meses
-    // $queryRaw retorna filas con { mes: Date, total: BigInt }
     const rawMeses = await prisma.$queryRaw`
         SELECT
             DATE_TRUNC('month', fecha) AS mes,
@@ -104,15 +78,15 @@ const getEstadisticas = async () => {
         total: Number(row.total),
     }));
 
-    // ── RANKING ALBERGUES (top 5 por adopciones completadas) ──────
+    // ── RANKING ALBERGUES (top 5 por adopciones) ──────────────────
     const rawRanking = await prisma.$queryRaw`
         SELECT
-            al.nombre                  AS nombre,
-            COUNT(ad.id_adopcion)::int AS adopciones
+            al.nombre_albergue             AS nombre,
+            COUNT(ad.id_adopcion)::int     AS adopciones
         FROM albergue AS al
         JOIN mascota  AS ma ON ma.id_albergue = al.id_albergue
-        JOIN adopcion AS ad ON ad.id_mascota   = ma.id_mascota
-        GROUP BY al.id_albergue, al.nombre
+        JOIN adopcion AS ad ON ad.id_mascota  = ma.id_mascota
+        GROUP BY al.id_albergue, al.nombre_albergue
         ORDER BY adopciones DESC
         LIMIT 5
     `;
@@ -122,30 +96,24 @@ const getEstadisticas = async () => {
         adopciones: Number(row.adopciones),
     }));
 
-    // ── RESULTADO ─────────────────────────────────────────────────
     return {
         usuarios: {
-            total_adoptantes: totalAdoptantes,
-            adoptantes_activos: adoptantesActivos,
+            total_adoptantes:    totalAdoptantes,
+            adoptantes_activos:  adoptantesActivos,
             adoptantes_inactivos: adoptantesInactivos,
-            total_albergues: totalAlbergues,
-            albergues_activos: alberguesActivos,
+            total_albergues:     totalAlbergues,
+            albergues_activos:   alberguesActivos,
             suspendidos,
-            tasa_completitud: tasaCompletitud,
+            tasa_completitud:    tasaCompletitud,
         },
         mascotas: {
             total: totalMascotas,
-            por_estado: {
-                disponible,
-                en_proceso,
-                adoptado,
-                archivado,
-            },
+            por_estado: { disponible, en_proceso, adoptado, archivado },
         },
         matching: {
-            total_matches: totalMatches,
-            total_adopciones: totalAdopciones,
-            adopciones_por_mes: adopcionesPorMes,
+            total_matches:        totalMatches,
+            total_adopciones:     totalAdopciones,
+            adopciones_por_mes:   adopcionesPorMes,
         },
         albergues_ranking: alberguesRanking,
     };
