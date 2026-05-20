@@ -90,13 +90,12 @@ const cambiarEstado = async (req, res) => {
         const authUserId = req.user.id;
         const clientIp = req.socket.remoteAddress || req.ip;
 
-        const result = await mascotaService.cambiarEstadoMascota(
-            id,
-            authUserId,
-            estado,
+        const result = await mascotaService.cambiarEstadoMascota(id, {
+            idAlbergue: authUserId,
+            nuevoEstado: estado,
             motivo,
-            clientIp
-        );
+            clientIp,
+        });
 
         return res.status(200).json({
             success: true,
