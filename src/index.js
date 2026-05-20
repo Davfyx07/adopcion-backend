@@ -61,6 +61,7 @@ const albergueMatchRoutes = require('./routes/albergueMatchRoutes');
 const adopcionHistorialRoutes = require('./routes/adopcionHistorialRoutes');
 const adminStatsRoutes = require('./routes/adminStatsRoutes');
 const adminUserRoutes = require('./routes/adminUserRoutes');
+const adminConfigRoutes = require('./routes/adminConfigRoutes');
 const { iniciarJobLimpieza } = require('./jobs/notificacionCleanupJob');
 
 
@@ -79,6 +80,7 @@ app.use('/api/shelters/matches', albergueMatchRoutes);
 app.use('/api/albergue/adopciones', adopcionHistorialRoutes);
 app.use('/api', adminStatsRoutes);
 app.use('/api', adminUserRoutes);
+app.use('/api', adminConfigRoutes);
 
 app.get('/health', (_, res) => res.json({ success: true }));
 
