@@ -728,6 +728,32 @@ for (const t of tagsData) {
     console.log(`❤️ Match creado: Adoptante ${adoptante.id_usuario} + Mascota ${mascota.id_mascota}`);
   }
 
+  // ─── 6. CONFIGURACIÓN DEL SISTEMA ────────────────────────────────
+  const configEntries = [
+    { clave: 'publicacion.limite_mascotas',            valor: '50',  grupo: 'publicacion',    descripcion: 'Límite de mascotas activas por albergue' },
+    { clave: 'publicacion.max_fotos',                  valor: '5',   grupo: 'publicacion',    descripcion: 'Máximo de fotos por mascota' },
+    { clave: 'publicacion.max_tamano_foto',             valor: '5',   grupo: 'publicacion',    descripcion: 'Tamaño máximo por foto en MB' },
+    { clave: 'publicacion.dias_sin_actividad',         valor: '60',  grupo: 'publicacion',    descripcion: 'Días sin actividad antes de alerta' },
+    { clave: 'matching.umbral_compatibilidad',         valor: '30',  grupo: 'matching',       descripcion: 'Umbral mínimo de compatibilidad (%)' },
+    { clave: 'seguridad.expiracion_sesion',            valor: '8',   grupo: 'seguridad',      descripcion: 'Expiración de sesión en horas' },
+    { clave: 'seguridad.max_intentos_login',           valor: '5',   grupo: 'seguridad',      descripcion: 'Máximo de intentos de login' },
+    { clave: 'seguridad.duracion_bloqueo',             valor: '15',  grupo: 'seguridad',      descripcion: 'Duración del bloqueo en minutos' },
+    { clave: 'seguridad.expiracion_enlace_recuperacion', valor: '30', grupo: 'seguridad',     descripcion: 'Expiración del enlace de recuperación en minutos' },
+    { clave: 'whatsapp.mensaje_predefinido',           valor: 'Hola {nombre_albergue}, soy {nombre_adoptante} y estoy interesado/a en adoptar a {nombre_mascota}. Me gustaría recibir más información.', grupo: 'whatsapp', descripcion: 'Mensaje predefinido de contacto' },
+    { clave: 'whatsapp.prefijo_telefonico',            valor: '+57', grupo: 'whatsapp',       descripcion: 'Prefijo telefónico' },
+    { clave: 'notificaciones.retencion_notificaciones', valor: '90', grupo: 'notificaciones', descripcion: 'Retención de notificaciones en días' },
+    { clave: 'notificaciones.modo_envio_matches',      valor: 'inmediato', grupo: 'notificaciones', descripcion: 'Modo de envío de matches' },
+  ];
+
+  for (const entry of configEntries) {
+    await prisma.configuracionSistema.upsert({
+      where: { clave: entry.clave },
+      update: {},
+      create: entry,
+    });
+    console.log(`⚙️  Config seeded: ${entry.clave}`);
+  }
+
   console.log('\n✅ Seed completado exitosamente.');
   console.log(`   - ${usuariosBasicos.length} usuarios base (admin, adoptante, albergue)`);
   console.log(`   - ${alberguesCreados.length} albergues demo`);
