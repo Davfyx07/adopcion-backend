@@ -169,7 +169,7 @@ const registrarInteres = async (idAdoptante, idMascota) => {
                 }
             });
 
-            await tx.notificacion.create({
+            const notif = await tx.notificacion.create({
                 data: {
                     id_usuario: mascota.id_albergue,
                     tipo_notificacion: 'match',
@@ -179,7 +179,18 @@ const registrarInteres = async (idAdoptante, idMascota) => {
                 }
             });
 
-            return { success: true, data: nuevoMatch };
+            return { success: true, data: nuevoMatch, notif };
+        }).then((result) => {
+            // Emit outside transaction so socket fires after DB commit
+            const { emitToUser } = require('../socket/socketManager');
+            emitToUser(mascota.id_albergue, 'nueva_notificacion', {
+                id_notificacion: result.notif.id,
+                tipo: 'match',
+                mensaje: `¡Nuevo interés! Alguien quiere adoptar a ${mascota.nombre}.`,
+                leida: false,
+                fecha_creacion: result.notif.fecha_creacion,
+            });
+            return { success: true, data: result.data };
         });
     } catch (err) {
         console.error('[recomendacion.service] registrarInteres:', err.message);
