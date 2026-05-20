@@ -3,6 +3,8 @@ const cors = require('cors');
 const helmet = require('helmet');
 const swaggerUi = require('swagger-ui-express');
 const swaggerJsDoc = require('swagger-jsdoc');
+const http = require('http');
+const { initSocket } = require('./socket/socketManager');
 require('dotenv').config();
 
 const app = express();
@@ -62,6 +64,7 @@ const adopcionHistorialRoutes = require('./routes/adopcionHistorialRoutes');
 const adminStatsRoutes = require('./routes/adminStatsRoutes');
 const adminUserRoutes = require('./routes/adminUserRoutes');
 const adminConfigRoutes = require('./routes/adminConfigRoutes');
+const adminMascotaRoutes = require('./routes/adminMascotaRoutes');
 const { iniciarJobLimpieza } = require('./jobs/notificacionCleanupJob');
 
 
@@ -81,10 +84,13 @@ app.use('/api/albergue/adopciones', adopcionHistorialRoutes);
 app.use('/api', adminStatsRoutes);
 app.use('/api', adminUserRoutes);
 app.use('/api', adminConfigRoutes);
+app.use('/api', adminMascotaRoutes);
 
 app.get('/health', (_, res) => res.json({ success: true }));
 
 // Iniciar jobs programados
 iniciarJobLimpieza();
 
-app.listen(PORT, () => console.log(`Server corriendo en http://localhost:${PORT}`));
+const httpServer = http.createServer(app);
+initSocket(httpServer);
+httpServer.listen(PORT, () => console.log(`Server corriendo en http://localhost:${PORT}`));

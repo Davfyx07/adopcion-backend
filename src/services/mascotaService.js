@@ -451,10 +451,18 @@ const actualizarMascota = async ({ id_mascota, id_albergue, data, ip }) => {
 // y hacer transiciones inválidas que se pisen entre sí.
 // ──────────────────────────────────────────────
 
-const cambiarEstadoMascota = async (idMascota, idAlbergue, nuevoEstado, motivo, clientIp) => {
+const cambiarEstadoMascota = async (idMascota, params) => {
+    const {
+        idAlbergue,
+        nuevoEstado,
+        motivo,
+        clientIp,
+        idAdmin,
+        motivoModeracion,
+    } = params;
+
     try {
-        return await prisma.$transaction(async (tx) => {
-            // FOR UPDATE: bloquear fila para integridad de la máquina de estados
+        const result = await prisma.$transaction(async (tx) => {
             const rows = await tx.$queryRaw`
                 SELECT id_mascota, id_albergue, estado_adopcion, nombre
                 FROM mascota
@@ -468,7 +476,7 @@ const cambiarEstadoMascota = async (idMascota, idAlbergue, nuevoEstado, motivo, 
 
             const mascota = rows[0];
 
-            if (mascota.id_albergue !== idAlbergue) {
+            if (idAlbergue !== null && mascota.id_albergue !== idAlbergue) {
                 throw new Error('No tienes permiso para modificar esta mascota.');
             }
 
@@ -496,15 +504,21 @@ const cambiarEstadoMascota = async (idMascota, idAlbergue, nuevoEstado, motivo, 
                 throw new Error(`Transición de estado no permitida: de '${estadoActual}' a '${nuevoEstado}'.`);
             }
 
+            const updateData = {
+                estado_adopcion: nuevoEstado,
+                updated_at: new Date(),
+            };
+
+            if (motivoModeracion !== undefined) {
+                updateData.motivo_moderacion = motivoModeracion;
+            }
+
             await tx.mascota.update({
                 where: { id_mascota: idMascota },
-                data: {
-                    estado_adopcion: nuevoEstado,
-                    updated_at: new Date(),
-                }
+                data: updateData,
             });
 
-            // Si la mascota fue adoptada, notificar a los adoptantes con match
+            let notificacionesCreadas = [];
             if (nuevoEstado === 'adoptado') {
                 const matches = await tx.match.findMany({
                     where: { id_mascota: idMascota },
@@ -513,7 +527,7 @@ const cambiarEstadoMascota = async (idMascota, idAlbergue, nuevoEstado, motivo, 
                 });
 
                 for (const match of matches) {
-                    await tx.notificacion.create({
+                    const notif = await tx.notificacion.create({
                         data: {
                             id_usuario: match.id_adoptante,
                             tipo_notificacion: 'mascota_adoptada',
@@ -521,18 +535,34 @@ const cambiarEstadoMascota = async (idMascota, idAlbergue, nuevoEstado, motivo, 
                             recurso_id: idMascota,
                         }
                     });
+                    notificacionesCreadas.push(notif);
                 }
             }
 
-            // Auditoría
+            if (idAdmin !== undefined) {
+                const notif = await tx.notificacion.create({
+                    data: {
+                        id_usuario: mascota.id_albergue,
+                        tipo_notificacion: nuevoEstado === 'oculto' ? 'mascota_ocultada' : 'mascota_reactivada',
+                        mensaje: nuevoEstado === 'oculto'
+                            ? `Tu mascota "${mascota.nombre}" fue ocultada por el administrador.`
+                            : `Tu mascota "${mascota.nombre}" fue reactivada por el administrador.`,
+                        recurso_tipo: 'mascota',
+                        recurso_id: idMascota,
+                    }
+                });
+                notificacionesCreadas.push(notif);
+            }
+
+            const autor = idAdmin !== undefined ? idAdmin : idAlbergue;
             await tx.logAuditoria.create({
                 data: {
-                    id_autor: idAlbergue,
-                    accion: 'cambio_estado_mascota',
+                    id_autor: autor,
+                    accion: idAdmin !== undefined ? 'moderacion_admin_mascota' : 'cambio_estado_mascota',
                     entidad_afectada: 'Mascota',
                     id_registro_afectado: idMascota,
                     valor_anterior: JSON.stringify({ estado: estadoActual }),
-                    valor_nuevo: JSON.stringify({ estado: nuevoEstado, motivo: motivo || null }),
+                    valor_nuevo: JSON.stringify({ estado: nuevoEstado, motivo: motivo || null, moderacion_admin: idAdmin !== undefined }),
                     ip: clientIp,
                 }
             });
@@ -541,8 +571,24 @@ const cambiarEstadoMascota = async (idMascota, idAlbergue, nuevoEstado, motivo, 
                 id_mascota: idMascota,
                 estado_anterior: estadoActual,
                 nuevo_estado: nuevoEstado,
+                notificaciones_creadas: notificacionesCreadas,
             };
         });
+
+        if (result.notificaciones_creadas && result.notificaciones_creadas.length > 0) {
+            const { emitToUser } = require('../socket/socketManager');
+            for (const notif of result.notificaciones_creadas) {
+                emitToUser(notif.id_usuario, 'nueva_notificacion', {
+                    id_notificacion: notif.id,
+                    tipo: notif.tipo_notificacion,
+                    mensaje: notif.mensaje,
+                    leida: false,
+                    fecha_creacion: notif.fecha_creacion,
+                });
+            }
+        }
+
+        return result;
     } catch (error) {
         console.error('[mascotaService] Error en cambiarEstadoMascota:', error);
         throw error;
@@ -566,7 +612,6 @@ const cambiarEstadoMascota = async (idMascota, idAlbergue, nuevoEstado, motivo, 
 const listarFeed = async ({ tipo, tamaño, edad, ciudad, page, limit }) => {
     const offset = (page - 1) * limit;
 
-    // Construir condiciones dinámicas con Prisma.sql (seguro — valores como placeholders)
     const conditions = [
         Prisma.sql`m.estado_adopcion = 'disponible'`,
         Prisma.sql`m.deleted_at IS NULL`,
@@ -611,7 +656,6 @@ const listarFeed = async ({ tipo, tamaño, edad, ciudad, page, limit }) => {
 
     const whereClause = Prisma.join(conditions, ' AND ');
 
-    // Count total (con los mismos filtros)
     const [{ total }] = await prisma.$queryRaw`
         SELECT COUNT(*)::int AS total
         FROM mascota m
@@ -619,15 +663,10 @@ const listarFeed = async ({ tipo, tamaño, edad, ciudad, page, limit }) => {
         WHERE ${whereClause}
     `;
 
-    // Si no hay resultados, devolver vacío rápido
     if (total === 0) {
-        return {
-            data: [],
-            meta: { page, limit, total: 0, pages: 0 },
-        };
+        return { data: [], meta: { page, limit, total: 0, pages: 0 } };
     }
 
-    // Feed query principal
     const mascotas = await prisma.$queryRaw`
         SELECT m.id_mascota, m.nombre, m.descripcion, m.fecha_publicacion,
                a.id_usuario AS id_albergue, a.nombre_albergue
@@ -638,7 +677,6 @@ const listarFeed = async ({ tipo, tamaño, edad, ciudad, page, limit }) => {
         LIMIT ${limit} OFFSET ${offset}
     `;
 
-    // Batch: obtener primera foto de cada mascota
     const mascotaIds = mascotas.map(m => m.id_mascota);
     const fotosMap = new Map();
 
@@ -649,12 +687,9 @@ const listarFeed = async ({ tipo, tamaño, edad, ciudad, page, limit }) => {
             WHERE id_mascota = ANY(${mascotaIds})
             ORDER BY id_mascota, orden ASC
         `;
-        for (const f of fotos) {
-            fotosMap.set(f.id_mascota, f.url_foto);
-        }
+        for (const f of fotos) fotosMap.set(f.id_mascota, f.url_foto);
     }
 
-    // Batch: obtener tags de cada mascota
     const tagsMap = new Map();
     if (mascotaIds.length > 0) {
         const tags = await prisma.$queryRaw`
@@ -665,29 +700,67 @@ const listarFeed = async ({ tipo, tamaño, edad, ciudad, page, limit }) => {
             WHERE mt.id_mascota = ANY(${mascotaIds})
         `;
         for (const t of tags) {
-            if (!tagsMap.has(t.id_mascota)) {
-                tagsMap.set(t.id_mascota, []);
-            }
+            if (!tagsMap.has(t.id_mascota)) tagsMap.set(t.id_mascota, []);
             tagsMap.get(t.id_mascota).push({ valor: t.valor, nombre_tag: t.nombre_tag });
         }
     }
 
-    // Ensamblar resultado
     const data = mascotas.map(m => ({
         ...m,
         foto: fotosMap.get(m.id_mascota) || null,
         tags: tagsMap.get(m.id_mascota) || [],
     }));
 
-    return {
-        data,
-        meta: { page, limit, total, pages: Math.ceil(total / limit) },
-    };
+    return { data, meta: { page, limit, total, pages: Math.ceil(total / limit) } };
 };
 
 // ──────────────────────────────────────────────
-// Listar mascotas de un albergue (paginado)
+// HU-ADM-03: Listar todas las mascotas (admin)
 // ──────────────────────────────────────────────
+
+const listarMascotasAdmin = async ({ page = 1, limit = 20 }) => {
+    const offset = (page - 1) * limit;
+
+    const [mascotas, totalResult] = await Promise.all([
+        prisma.$queryRaw`
+            SELECT
+                m.id_mascota,
+                m.nombre,
+                m.estado_adopcion,
+                m.fecha_publicacion,
+                m.motivo_moderacion,
+                a.nombre_albergue,
+                a.id_usuario as id_albergue
+            FROM mascota m
+            JOIN albergue a ON m.id_albergue = a.id_usuario
+            WHERE m.deleted_at IS NULL
+            ORDER BY m.fecha_publicacion DESC
+            LIMIT ${limit}
+            OFFSET ${offset}
+        `,
+        prisma.$queryRaw`SELECT COUNT(*) as total FROM mascota m WHERE m.deleted_at IS NULL`,
+    ]);
+
+    const total = Number(totalResult[0]?.total) || 0;
+
+    return {
+        data: mascotas.map((m) => ({
+            id_mascota: m.id_mascota,
+            nombre: m.nombre,
+            estado_adopcion: m.estado_adopcion,
+            fecha_publicacion: m.fecha_publicacion,
+            motivo_moderacion: m.motivo_moderacion,
+            id_albergue: m.id_albergue,
+            nombre_albergue: m.nombre_albergue,
+        })),
+        meta: {
+            total,
+            page,
+            limit,
+            totalPages: Math.ceil(total / limit),
+        },
+    };
+};
 
 const listarMisMascotas = async (idAlbergue, { page, limit }) => {
     const offset = (page - 1) * limit;
@@ -856,7 +929,7 @@ const eliminarMascota = async (idMascota, idAlbergue, motivo) => {
 
 const registrarMatch = async ({ idAdoptante, idMascota, puntaje }) => {
     try {
-        return await prisma.$transaction(async (tx) => {
+        const result = await prisma.$transaction(async (tx) => {
             // Verificar que la mascota existe y está disponible
             const mascota = await tx.mascota.findUnique({
                 where: { id_mascota: idMascota },
@@ -914,7 +987,7 @@ const registrarMatch = async ({ idAdoptante, idMascota, puntaje }) => {
             });
 
             // Notificar al albergue
-            await tx.notificacion.create({
+            const notificacionCreada = await tx.notificacion.create({
                 data: {
                     id_usuario: mascota.id_albergue,
                     tipo_notificacion: 'nuevo_match',
@@ -933,9 +1006,23 @@ const registrarMatch = async ({ idAdoptante, idMascota, puntaje }) => {
                     puntaje: match.puntaje,
                     estado: match.estado,
                     fecha: match.fecha,
-                }
+                },
+                notificacion_creada: notificacionCreada,
             };
         });
+
+        if (result.success && result.notificacion_creada) {
+            const { emitToUser } = require('../socket/socketManager');
+            emitToUser(result.notificacion_creada.id_usuario, 'nueva_notificacion', {
+                id_notificacion: result.notificacion_creada.id,
+                tipo: result.notificacion_creada.tipo_notificacion,
+                mensaje: result.notificacion_creada.mensaje,
+                leida: false,
+                fecha_creacion: result.notificacion_creada.fecha_creacion,
+            });
+        }
+
+        return result;
     } catch (err) {
         console.error('[mascotaService] registrarMatch:', err.message);
         throw err;
@@ -1026,6 +1113,7 @@ module.exports = {
     cambiarEstadoMascota,
     listarFeed,
     listarMisMascotas,
+    listarMascotasAdmin,
     eliminarMascota,
     registrarMatch,
     obtenerMatches,
