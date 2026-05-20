@@ -177,7 +177,16 @@ const loginUser = async ({ email, password, ip }) => {
                 return { success: false, status: 401, message: 'Correo o contraseña incorrectos.' };
             }
 
-            // 1. Verificar si la cuenta está bloqueada temporalmente
+            // 1a. Verificar si la cuenta está suspendida o desactivada por admin
+            if (user.estado_cuenta === 'suspendido' || user.estado_cuenta === 'desactivado') {
+                return {
+                    success: false,
+                    status: 403,
+                    message: "Tu cuenta ha sido suspendida. Contactá al administrador para más información.",
+                };
+            }
+
+            // 1b. Verificar si la cuenta está bloqueada temporalmente
             if (user.estado_cuenta === 'bloqueado_temporal' && user.bloqueado_hasta) {
                 const now = new Date();
                 const blockedUntil = new Date(user.bloqueado_hasta);
