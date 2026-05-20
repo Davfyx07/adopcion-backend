@@ -102,10 +102,13 @@ const obtenerRecomendaciones = async (idAdoptante, { limit = 20, offset = 0 } = 
             if (!esValida || porcentaje < 30) return null;
 
             return {
+                id: mascota.id_mascota,
                 id_mascota: mascota.id_mascota,
                 nombre: mascota.nombre,
                 descripcion: mascota.descripcion,
-                fotos: mascota.mascota_foto.map(f => f.url_foto),
+                foto: mascota.mascota_foto[0]?.url_foto ?? null,   // primera foto para el card
+                fotos: mascota.mascota_foto.map(f => f.url_foto),  // todas las fotos
+                fecha_publicacion: mascota.fecha_publicacion,
                 albergue: {
                     id: mascota.albergue.id_usuario,
                     nombre: mascota.albergue.nombre_albergue,

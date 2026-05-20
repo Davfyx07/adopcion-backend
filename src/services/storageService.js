@@ -79,6 +79,14 @@ const uploadImage = async (source, folder = 'adopcion') => {
  */
 const deleteImage = async (url, folder = 'adopcion') => {
     try {
+        // Solo intentar borrar si la URL es de Cloudinary real (no externas ni mocks)
+        if (!url || !url.includes('res.cloudinary.com')) {
+            return; // URL externa (dog.ceo, thecatapi, etc.) — no hay nada que borrar
+        }
+        // No borrar URLs mock de desarrollo
+        if (url.includes('/demo/') || url.includes('mock_')) {
+            return;
+        }
         // Extraer public_id completo incluyendo subfolders
         // URL: https://res.cloudinary.com/cloud/image/upload/v123/folder/sub/file.jpg
         // public_id: folder/sub/file
