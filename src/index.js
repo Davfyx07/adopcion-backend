@@ -73,4 +73,19 @@ app.use('/api/recomendaciones', recomendacionRoutes);
 
 app.get('/health', (_, res) => res.json({ success: true }));
 
-app.listen(PORT, () => console.log(`Server corriendo en http://localhost:${PORT}`));
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server corriendo en http://localhost:${PORT}`);
+    
+    // DEBUG: Verificar qué está leyendo NodeJS exactamente como DATABASE_URL
+    try {
+      const dbUrl = process.env.DATABASE_URL || '';
+      console.log('DEBUG DATABASE_URL length:', dbUrl.length);
+      console.log('DEBUG DATABASE_URL starts with:', dbUrl.substring(0, 11));
+      
+      const { URL } = require('url');
+      const parsed = new URL(dbUrl);
+      console.log('DEBUG DB HOST A CONECTAR:', parsed.hostname);
+    } catch (err) {
+      console.log('DEBUG DB URL NO SE PUDO PARSEAR:', err.message);
+    }
+});
