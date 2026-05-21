@@ -65,10 +65,12 @@ const adminStatsRoutes = require('./routes/adminStatsRoutes');
 const adminUserRoutes = require('./routes/adminUserRoutes');
 const adminConfigRoutes = require('./routes/adminConfigRoutes');
 const adminMascotaRoutes = require('./routes/adminMascotaRoutes');
+const usuarioRoutes = require('./routes/usuarioRoutes');
 const { iniciarJobLimpieza } = require('./jobs/notificacionCleanupJob');
 
 
 app.use('/api/auth', authRoutes);
+app.use('/api/usuario', usuarioRoutes);
 app.use('/api/adoptante', adoptanteRoutes);
 app.use('/api/etiquetas', etiquetaRoutes);
 app.use('/api/albergue', albergueRoutes);
