@@ -8,7 +8,7 @@ const { Pool } = require('pg');
 // Acepta DATABASE_URL como variable principal y DB_HOST como respaldo
 // para mantener compatibilidad con el .env actual del proyecto.
 // ──────────────────────────────────────────────
-const connectionString = process.env.DATABASE_URL;
+let connectionString = process.env.DATABASE_URL;
 
 if (!connectionString) {
     throw new Error('FATAL: La variable DATABASE_URL no está definida en el entorno (Azure App Service).');
@@ -18,11 +18,12 @@ if (!connectionString.startsWith('postgres://') && !connectionString.startsWith(
     throw new Error('FATAL: DATABASE_URL debe empezar con postgres:// o postgresql://');
 }
 
-const poolConfig = { connectionString };
-if (connectionString.includes('sslmode=require')) {
-    poolConfig.ssl = { rejectUnauthorized: false };
+// Inyectar uselibpqcompat=true automáticamente si tiene sslmode=require pero no tiene uselibpqcompat
+if (connectionString.includes('sslmode=require') && !connectionString.includes('uselibpqcompat=true')) {
+    connectionString += '&uselibpqcompat=true';
 }
-const pool = new Pool(poolConfig);
+
+const pool = new Pool({ connectionString });
 
 // Verificar la conexión de red al iniciar
 pool.on('error', (err) => {
