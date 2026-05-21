@@ -1,5 +1,6 @@
 const { PrismaClient } = require('@prisma/client');
 const { PrismaPg } = require('@prisma/adapter-pg');
+const { Pool } = require('pg');
 
 // ──────────────────────────────────────────────
 // Base PrismaClient
@@ -7,14 +8,24 @@ const { PrismaPg } = require('@prisma/adapter-pg');
 // Acepta DATABASE_URL como variable principal y DB_HOST como respaldo
 // para mantener compatibilidad con el .env actual del proyecto.
 // ──────────────────────────────────────────────
-const connectionString = process.env.DATABASE_URL || process.env.DB_HOST;
+const connectionString = process.env.DATABASE_URL;
 
 if (!connectionString) {
-    throw new Error('Falta DATABASE_URL o DB_HOST para conectar Prisma a PostgreSQL.');
+    throw new Error('FATAL: La variable DATABASE_URL no está definida en el entorno (Azure App Service).');
 }
 
-const adapter = new PrismaPg({
-  connectionString,
+if (!connectionString.startsWith('postgres://') && !connectionString.startsWith('postgresql://')) {
+    throw new Error('FATAL: DATABASE_URL debe empezar con postgres:// o postgresql://');
+}
+
+const pool = new Pool({ connectionString });
+
+// Verificar la conexión de red al iniciar
+pool.on('error', (err) => {
+  console.error('Error inesperado del pool de PostgreSQL:', err);
+});
+
+const adapter = new PrismaPg(pool, {
   schema: 'public',
 });
 
