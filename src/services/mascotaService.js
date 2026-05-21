@@ -718,8 +718,20 @@ const listarFeed = async ({ tipo, tamaño, edad, ciudad, page, limit }) => {
 // HU-ADM-03: Listar todas las mascotas (admin)
 // ──────────────────────────────────────────────
 
-const listarMascotasAdmin = async ({ page = 1, limit = 20 }) => {
+const listarMascotasAdmin = async ({ page = 1, limit = 20, estado, albergue } = {}) => {
     const offset = (page - 1) * limit;
+
+    const conditions = [Prisma.sql`m.deleted_at IS NULL`];
+
+    if (estado) {
+        conditions.push(Prisma.sql`m.estado_adopcion = ${estado}`);
+    }
+
+    if (albergue) {
+        conditions.push(Prisma.sql`a.nombre_albergue ILIKE ${'%' + albergue + '%'}`);
+    }
+
+    const whereClause = Prisma.join(conditions, ' AND ');
 
     const [mascotas, totalResult] = await Promise.all([
         prisma.$queryRaw`
@@ -733,12 +745,12 @@ const listarMascotasAdmin = async ({ page = 1, limit = 20 }) => {
                 a.id_usuario as id_albergue
             FROM mascota m
             JOIN albergue a ON m.id_albergue = a.id_usuario
-            WHERE m.deleted_at IS NULL
+            WHERE ${whereClause}
             ORDER BY m.fecha_publicacion DESC
             LIMIT ${limit}
             OFFSET ${offset}
         `,
-        prisma.$queryRaw`SELECT COUNT(*) as total FROM mascota m WHERE m.deleted_at IS NULL`,
+        prisma.$queryRaw`SELECT COUNT(*) as total FROM mascota m JOIN albergue a ON m.id_albergue = a.id_usuario WHERE ${whereClause}`,
     ]);
 
     const total = Number(totalResult[0]?.total) || 0;
