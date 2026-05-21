@@ -4,9 +4,10 @@ const listarMascotasAdmin = async (req, res) => {
     try {
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 20;
+        const { estado, albergue } = req.query;
 
         const mascotaService = require('../services/mascotaService');
-        const result = await mascotaService.listarMascotasAdmin({ page, limit });
+        const result = await mascotaService.listarMascotasAdmin({ page, limit, estado, albergue });
 
         return res.status(200).json({
             success: true,
@@ -108,4 +109,18 @@ const cambiarEstadoAdmin = async (req, res) => {
     }
 };
 
-module.exports = { listarMascotasAdmin, getHistorialModeracion, cambiarEstadoAdmin };
+const getMascotaDetalle = async (req, res) => {
+    try {
+        const idMascota = parseInt(req.params.id);
+        if (isNaN(idMascota)) return res.status(400).json({ success: false, message: 'ID inválido.' });
+        const mascotaService = require('../services/mascotaService');
+        const mascota = await mascotaService.obtenerMascotaPorId(idMascota);
+        if (!mascota) return res.status(404).json({ success: false, message: 'Mascota no encontrada.' });
+        return res.status(200).json({ success: true, data: mascota });
+    } catch (error) {
+        console.error('[adminMascotaController] getMascotaDetalle:', error);
+        return res.status(500).json({ success: false, message: 'Error interno.' });
+    }
+};
+
+module.exports = { listarMascotasAdmin, getHistorialModeracion, cambiarEstadoAdmin, getMascotaDetalle };

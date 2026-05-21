@@ -14,6 +14,7 @@ const {
     getHistorialModeracion,
     cambiarEstadoAdmin,
     listarMascotasAdmin,
+    getMascotaDetalle,
 } = require('../controllers/adminMascotaController');
 
 router.get(
@@ -35,6 +36,13 @@ router.patch(
     authMiddleware,
     authorizeRole(['administrador']),
     cambiarEstadoAdmin
+);
+
+router.get(
+    '/admin/mascotas/:id',
+    authMiddleware,
+    authorizeRole(['administrador']),
+    getMascotaDetalle
 );
 
 module.exports = router;
