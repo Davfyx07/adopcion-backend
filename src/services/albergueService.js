@@ -147,6 +147,8 @@ const getPerfilAlbergue = async (userId) => {
             descripcion: perfil.descripcion,
             whatsapp_actual: perfil.whatsapp_actual,
             sitio_web: perfil.sitio_web,
+            direccion: perfil.direccion,
+            ciudad: perfil.ciudad,
             correo: perfil.usuario.correo,
         };
     } catch (err) {
@@ -185,7 +187,8 @@ const updatePerfilAlbergue = async (userId, data, ip) => {
             }
 
             // 📞 Historial WhatsApp (si cambió)
-            if (data.whatsapp_actual && data.whatsapp_actual !== current.whatsapp_actual) {
+            const whatsappNuevo = data.whatsapp || data.whatsapp_actual;
+            if (whatsappNuevo && whatsappNuevo !== current.whatsapp_actual) {
                 await tx.historialWhatsappAlbergue.updateMany({
                     where: { id_albergue: userId, fecha_fin: null },
                     data: { fecha_fin: new Date() }
@@ -194,7 +197,7 @@ const updatePerfilAlbergue = async (userId, data, ip) => {
                 await tx.historialWhatsappAlbergue.create({
                     data: {
                         id_albergue: userId,
-                        numero_whatsapp: data.whatsapp_actual,
+                        numero_whatsapp: whatsappNuevo,
                     }
                 });
             }
@@ -213,10 +216,13 @@ const updatePerfilAlbergue = async (userId, data, ip) => {
 
             // 📝 Update con COALESCE-like: solo campos no-null
             const updateData = {};
-            if (data.descripcion !== undefined) updateData.descripcion = data.descripcion;
-            if (data.whatsapp_actual !== undefined) updateData.whatsapp_actual = data.whatsapp_actual;
-            if (data.sitio_web !== undefined) updateData.sitio_web = data.sitio_web;
-            updateData.logo = logoFinal;
+            if (data.nombre_albergue !== undefined) updateData.nombre_albergue = data.nombre_albergue;
+            if (data.descripcion     !== undefined) updateData.descripcion     = data.descripcion;
+            if (data.sitio_web       !== undefined) updateData.sitio_web       = data.sitio_web || null;
+            if (data.direccion       !== undefined) updateData.direccion       = data.direccion || null;
+            if (data.ciudad          !== undefined) updateData.ciudad          = data.ciudad    || null;
+            if (whatsappNuevo        !== undefined) updateData.whatsapp_actual = whatsappNuevo;
+            updateData.logo       = logoFinal;
             updateData.updated_at = new Date();
 
             const updated = await tx.albergue.update({

@@ -76,6 +76,8 @@ model Albergue {
   descripcion     String?
   whatsapp_actual String?   @db.VarChar(20)
   sitio_web       String?   @db.VarChar(255)
+  direccion       String?
+  ciudad          String?   @db.VarChar(100)
   deleted_at      DateTime? @db.Timestamptz(6)
   updated_at      DateTime? @default(now()) @db.Timestamptz(6)
 
