@@ -30,6 +30,16 @@ pool.on('error', (err) => {
   console.error('Error inesperado del pool de PostgreSQL:', err);
 });
 
+// Prueba de conexión explícita para ver el error real si falla
+pool.connect()
+  .then(client => {
+    console.log('DEBUG: ¡Conexión a PostgreSQL establecida con éxito desde pg.Pool!');
+    client.release();
+  })
+  .catch(err => {
+    console.error('DEBUG FATAL: Falló la conexión inicial a PostgreSQL:', err.message, err.stack);
+  });
+
 const adapter = new PrismaPg(pool, {
   schema: 'public',
 });
