@@ -1,50 +1,52 @@
-name: Deploy Backend Auth (Branch Deploy)
-
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+name: Deploy Backend Auth Docker
 
 on:
   push:
     branches: [ "deploy" ]
 
 jobs:
-  ci-validation:
+  build-and-push:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5 # Actualizado a v5
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v5 # Actualizado a v5
-        with:
-          node-version: '22' # Node 22 es el estándar estable en 2026
-          cache: 'npm'
-      
-      - run: npm install
-      - run: npm run lint || echo "No lint found"
-      - run: node --check src/index.js
+    permissions:
+      contents: read
+      packages: write
 
-  cd-deployment:
-    needs: ci-validation
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lowercase repo owner
+        id: repo_owner
+        run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_OUTPUT
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/${{ steps.repo_owner.outputs.owner }}/furmatch-backend:latest
+
+  deploy:
     runs-on: ubuntu-latest
+    needs: build-and-push
     steps:
-      - uses: actions/checkout@v5
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: '22'
-
-      # PASO VITAL: Instalar dependencias para producción antes de subir
-      - name: Install dependencies
-        run: npm install --production
+      - name: Lowercase repo owner for deploy
+        id: repo_owner_deploy
+        run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_OUTPUT
 
       - name: Login to Azure
         uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Deploy to Azure Web App
+      - name: Deploy to Azure App Service
         uses: azure/webapps-deploy@v3
         with:
           app-name: 'app-adopcion-backend-dev'
-          package: . # Ahora este '.' incluye la carpeta node_modules
+          images: 'ghcr.io/${{ steps.repo_owner_deploy.outputs.owner }}/furmatch-backend:latest'
