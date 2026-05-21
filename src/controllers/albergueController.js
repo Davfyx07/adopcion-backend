@@ -1,7 +1,8 @@
 const {
     createAlbergueProfile,
     getPerfilAlbergue,
-    updatePerfilAlbergue
+    updatePerfilAlbergue,
+    obtenerHistorialAdopciones: serviceObtenerHistorialAdopciones
 } = require('../services/albergueService');
 
 /**
@@ -99,8 +100,173 @@ const updatePerfil = async (req, res) => {
     }
 };
 
+const { 
+    obtenerMatchesAlbergue,
+    contactarAdoptante: serviceContactarAdoptante,
+    obtenerHistorialContactos: serviceObtenerHistorialContactos
+} = require('../services/matchService');
+
+const obtenerMatches = async (req, res) => {
+    try {
+        const idAlbergue = req.user.id;
+        const idMascota = req.query.id_mascota || null;
+        const limit = parseInt(req.query.limit) || 10;
+        const offset = parseInt(req.query.offset) || 0;
+
+        const result = await obtenerMatchesAlbergue(idAlbergue, { idMascota, limit, offset });
+
+        return res.status(200).json(result);
+    } catch (err) {
+        console.error('[albergueController] Error en obtenerMatches:', err);
+        return res.status(500).json({
+            success: false,
+            message: 'Error interno al obtener matches.',
+        });
+    }
+};
+
+const contactarAdoptante = async (req, res) => {
+    try {
+        const idAlbergue = req.user.id;
+        const { idMatch } = req.params;
+
+        const result = await serviceContactarAdoptante(idAlbergue, idMatch);
+        if (!result.success) {
+            return res.status(result.status || 400).json(result);
+        }
+
+        return res.status(200).json(result);
+    } catch (err) {
+        console.error('[albergueController] Error en contactarAdoptante:', err);
+        return res.status(500).json({
+            success: false,
+            message: 'Error interno al registrar contacto.',
+        });
+    }
+};
+
+const obtenerHistorialContactos = async (req, res) => {
+    try {
+        const idAlbergue = req.user.id;
+        const { idMatch } = req.params;
+
+        const result = await serviceObtenerHistorialContactos(idAlbergue, idMatch);
+        if (!result.success) {
+            return res.status(result.status || 400).json(result);
+        }
+
+        return res.status(200).json(result);
+    } catch (err) {
+        console.error('[albergueController] Error en obtenerHistorialContactos:', err);
+        return res.status(500).json({
+            success: false,
+            message: 'Error interno al obtener el historial de contactos.',
+        });
+    }
+};
+
+const obtenerHistorialAdopciones = async (req, res) => {
+    try {
+        const idAlbergue = req.user.id;
+        const limit = parseInt(req.query.limit) || 10;
+        const offset = parseInt(req.query.offset) || 0;
+
+        const result = await serviceObtenerHistorialAdopciones(idAlbergue, { limit, offset });
+        return res.status(200).json(result);
+    } catch (err) {
+        console.error('[albergueController] Error en obtenerHistorialAdopciones:', err);
+        return res.status(500).json({
+            success: false,
+            message: 'Error interno al obtener el historial de adopciones.',
+        });
+    }
+};
+
+const ExcelJS = require('exceljs');
+
+const exportarCSV = async (req, res) => {
+    try {
+        const idAlbergue = req.user.id;
+        const { estado, fecha_desde, fecha_hasta } = req.query;
+
+        // Fetch all (no limits)
+        const result = await serviceObtenerHistorialAdopciones(idAlbergue, { limit: 10000, offset: 0 });
+        let data = result.data;
+
+        if (estado) data = data.filter(a => (a.estado_proceso || a.estado) === estado);
+        if (fecha_desde) data = data.filter(a => new Date(a.fecha_adopcion) >= new Date(fecha_desde));
+        if (fecha_hasta) data = data.filter(a => new Date(a.fecha_adopcion) <= new Date(fecha_hasta));
+
+        let csv = 'ID Adopcion,Mascota,Adoptante,Fecha,Estado\n';
+        data.forEach(a => {
+            const petName = a.mascota?.nombre || '—';
+            const adopterName = a.adoptante?.nombre_completo || '—';
+            const date = a.fecha_adopcion ? new Date(a.fecha_adopcion).toISOString().split('T')[0] : '—';
+            const status = a.estado_proceso || '—';
+            csv += `"${a.id_adopcion}","${petName}","${adopterName}","${date}","${status}"\n`;
+        });
+
+        res.header('Content-Type', 'text/csv');
+        res.attachment('adopciones.csv');
+        return res.send(csv);
+    } catch (err) {
+        console.error('[albergueController] Error en exportarCSV:', err);
+        return res.status(500).json({ success: false, message: 'Error al exportar CSV.' });
+    }
+};
+
+const exportarExcel = async (req, res) => {
+    try {
+        const idAlbergue = req.user.id;
+        const { estado, fecha_desde, fecha_hasta } = req.query;
+
+        const result = await serviceObtenerHistorialAdopciones(idAlbergue, { limit: 10000, offset: 0 });
+        let data = result.data;
+
+        if (estado) data = data.filter(a => (a.estado_proceso || a.estado) === estado);
+        if (fecha_desde) data = data.filter(a => new Date(a.fecha_adopcion) >= new Date(fecha_desde));
+        if (fecha_hasta) data = data.filter(a => new Date(a.fecha_adopcion) <= new Date(fecha_hasta));
+
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('Adopciones');
+
+        worksheet.columns = [
+            { header: 'ID Adopcion', key: 'id', width: 36 },
+            { header: 'Mascota', key: 'petName', width: 20 },
+            { header: 'Adoptante', key: 'adopterName', width: 30 },
+            { header: 'Fecha', key: 'date', width: 15 },
+            { header: 'Estado', key: 'status', width: 15 },
+        ];
+
+        data.forEach(a => {
+            worksheet.addRow({
+                id: a.id_adopcion,
+                petName: a.mascota?.nombre || '—',
+                adopterName: a.adoptante?.nombre_completo || '—',
+                date: a.fecha_adopcion ? new Date(a.fecha_adopcion).toISOString().split('T')[0] : '—',
+                status: a.estado_proceso || '—'
+            });
+        });
+
+        res.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.attachment('adopciones.xlsx');
+
+        await workbook.xlsx.write(res);
+        res.end();
+    } catch (err) {
+        console.error('[albergueController] Error en exportarExcel:', err);
+        return res.status(500).json({ success: false, message: 'Error al exportar Excel.' });
+    }
+};
+
 module.exports = {
     createProfile,
     getPerfil,
-    updatePerfil
+    updatePerfil,
+    obtenerMatches,
+    contactarAdoptante,
+    obtenerHistorialContactos,
+    obtenerHistorialAdopciones,
+    exportarCSV,
+    exportarExcel,
 };

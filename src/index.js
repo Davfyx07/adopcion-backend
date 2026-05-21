@@ -53,6 +53,10 @@ const mascotaRoutes = require('./routes/mascotaRoutes');
 const tagRoutes = require('./routes/tagRoutes');
 const notificacionRoutes = require('./routes/notificacionRoutes');
 const matchRoutes = require('./routes/matchRoutes');
+const usuarioRoutes = require('./routes/usuarioRoutes');
+const estadisticaRoutes = require('./routes/estadisticaRoutes');
+const configuracionRoutes = require('./routes/configuracionRoutes');
+const recomendacionRoutes = require('./routes/recomendacionRoutes');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/adoptante', adoptanteRoutes);
@@ -62,6 +66,10 @@ app.use('/api/mascotas', mascotaRoutes);
 app.use('/api', tagRoutes);
 app.use('/api/notificaciones', notificacionRoutes);
 app.use('/api/match', matchRoutes);
+app.use('/api', usuarioRoutes);
+app.use('/api', estadisticaRoutes);
+app.use('/api', configuracionRoutes);
+app.use('/api/recomendaciones', recomendacionRoutes);
 
 app.get('/health', (_, res) => res.json({ success: true }));
 

@@ -1,4 +1,4 @@
-const { registerUser, loginUser, forgotPassword, resetPassword, logoutUser } = require('../services/authService');
+const { registerUser, loginUser, forgotPassword, resetPassword, logoutUser, verifyEmail } = require('../services/authService');
 
 /**
  * POST /api/auth/register
@@ -144,10 +144,42 @@ const logout = async (req, res) => {
     }
 };
 
+const verifyEmailController = async (req, res) => {
+    try {
+        const { token } = req.body;
+        const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown';
+
+        if (!token) {
+            return res.status(400).json({ success: false, message: 'El token es requerido.' });
+        }
+
+        const result = await verifyEmail({ token, ip });
+
+        if (!result.success) {
+            return res.status(result.status || 400).json({
+                success: false,
+                message: result.message
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: result.message
+        });
+    } catch (err) {
+        console.error('[auth.controller] verifyEmail:', err.message);
+        return res.status(500).json({
+            success: false,
+            message: 'Error al verificar el correo electrónico.'
+        });
+    }
+};
+
 module.exports = {
     register,
     login,
     forgotPassword: forgotPasswordController,
     resetPassword: resetPasswordController,
-    logout
+    logout,
+    verifyEmail: verifyEmailController
 };

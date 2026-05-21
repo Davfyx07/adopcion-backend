@@ -8,8 +8,16 @@ const { validateCreatePerfil, validateUpdatePerfil } = require('../middlewares/a
 const {
     createProfile,
     getPerfil,
-    updatePerfil
+    updatePerfil,
+    obtenerMatches,
+    contactarAdoptante,
+    obtenerHistorialContactos,
+    obtenerHistorialAdopciones,
+    exportarCSV,
+    exportarExcel
 } = require('../controllers/albergueController');
+
+// ... (existing code, keeping it unchanged by using proper target content block)
 
 /**
  * @swagger
@@ -141,5 +149,90 @@ router.get('/perfil', authMiddleware, authorizeRole(['albergue']), getPerfil);
  *         description: Error de validación (ej. intento de modificar NIT).
  */
 router.put('/perfil', authMiddleware, authorizeRole(['albergue']), validateUpdatePerfil, updatePerfil);
+
+/**
+ * @swagger
+ * /api/albergue/matches:
+ *   get:
+ *     summary: Obtener candidatos/matches del albergue (HU-MCH-02)
+ *     description: Retorna la lista de matches/candidatos interesados en mascotas del albergue autenticado.
+ *     tags: [Albergue]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Lista de candidatos retornada exitosamente.
+ */
+router.get('/matches', authMiddleware, authorizeRole(['albergue']), obtenerMatches);
+
+/**
+ * @swagger
+ * /api/albergue/matches/{idMatch}/contact:
+ *   post:
+ *     summary: Registrar contacto con candidato
+ *     tags: [Albergue]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Contacto registrado
+ */
+router.post('/matches/:idMatch/contact', authMiddleware, authorizeRole(['albergue']), contactarAdoptante);
+
+/**
+ * @swagger
+ * /api/albergue/matches/{idMatch}/historial:
+ *   get:
+ *     summary: Obtener historial de contactos
+ *     tags: [Albergue]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Historial de contactos
+ */
+router.get('/matches/:idMatch/historial', authMiddleware, authorizeRole(['albergue']), obtenerHistorialContactos);
+
+/**
+ * @swagger
+ * /api/albergue/adopciones:
+ *   get:
+ *     summary: Obtener historial de adopciones
+ *     tags: [Albergue]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Historial de adopciones
+ */
+router.get('/adopciones', authMiddleware, authorizeRole(['albergue']), obtenerHistorialAdopciones);
+
+/**
+ * @swagger
+ * /api/albergue/adopciones/exportar:
+ *   get:
+ *     summary: Exportar historial de adopciones a CSV
+ *     tags: [Albergue]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Archivo CSV
+ */
+router.get('/adopciones/exportar', authMiddleware, authorizeRole(['albergue']), exportarCSV);
+
+/**
+ * @swagger
+ * /api/albergue/adopciones/exportar-excel:
+ *   get:
+ *     summary: Exportar historial de adopciones a Excel
+ *     tags: [Albergue]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Archivo Excel
+ */
+router.get('/adopciones/exportar-excel', authMiddleware, authorizeRole(['albergue']), exportarExcel);
 
 module.exports = router;

@@ -48,7 +48,7 @@ basePrisma._bypassSoftDelete = false;
 // se respeta su valor (no se sobreescribe).
 // ──────────────────────────────────────────────
 
-const SOFT_DELETE_MODELS = ['Usuario', 'Adoptante', 'Albergue', 'Mascota'];
+const SOFT_DELETE_MODELS = ['Usuario', 'Mascota'];
 const SOFT_DELETE_ACTIONS = ['findUnique', 'findMany', 'findFirst', 'count'];
 
 const softDeleteExtension = basePrisma.$extends({

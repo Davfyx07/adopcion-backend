@@ -73,7 +73,7 @@ router.patch('/:id/leida', authMiddleware, marcarNotificacionLeida);
 
 /**
  * @swagger
- * /api/notificaciones/leidas:
+ * /api/notificaciones/leer-todas:
  *   patch:
  *     summary: Marcar todas las notificaciones como leídas
  *     description: Cambia el estado de todas las notificaciones pendientes a "leida".
@@ -88,6 +88,6 @@ router.patch('/:id/leida', authMiddleware, marcarNotificacionLeida);
  *       500:
  *         description: Error interno del servidor
  */
-router.patch('/leidas', authMiddleware, marcarTodasLeidas);
+router.patch('/leer-todas', authMiddleware, marcarTodasLeidas);
 
 module.exports = router;

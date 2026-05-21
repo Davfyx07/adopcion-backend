@@ -2,7 +2,7 @@ const prisma = require('../config/prisma');
 
 /**
  * Obtener notificaciones de un usuario.
- * @param {number} idUsuario
+ * @param {string} idUsuario
  * @param {Object} options - { soloNoLeidas, limit }
  * @returns {Object} { success, data }
  */
@@ -11,31 +11,29 @@ const obtenerNotificaciones = async (idUsuario, { soloNoLeidas = false, limit = 
         const where = { id_usuario: idUsuario };
 
         if (soloNoLeidas) {
-            where.estado = 'pendiente';
+            where.leida = false;
         }
 
         const notificaciones = await prisma.notificacion.findMany({
             where,
-            orderBy: { fecha_creacion: 'desc' },
+            orderBy: { fecha_hora: 'desc' },
             take: limit,
         });
 
         const totalNoLeidas = soloNoLeidas
             ? notificaciones.length
             : await prisma.notificacion.count({
-                where: { id_usuario: idUsuario, estado: 'pendiente' }
+                where: { id_usuario: idUsuario, leida: false }
             });
 
         return {
             success: true,
             data: notificaciones.map(n => ({
-                id: n.id,
+                id: n.id_notificacion,
                 tipo: n.tipo_notificacion,
                 mensaje: n.mensaje,
-                estado: n.estado,
-                fecha_creacion: n.fecha_creacion,
-                fecha_lectura: n.fecha_lectura,
-                recurso_tipo: n.recurso_tipo,
+                leida: n.leida,
+                fecha_creacion: n.fecha_hora,
                 recurso_id: n.recurso_id,
             })),
             total_no_leidas: totalNoLeidas,
@@ -48,14 +46,14 @@ const obtenerNotificaciones = async (idUsuario, { soloNoLeidas = false, limit = 
 
 /**
  * Marcar una notificación como leída.
- * @param {number} idNotificacion
- * @param {number} idUsuario - para verificar propiedad
+ * @param {string} idNotificacion
+ * @param {string} idUsuario - para verificar propiedad
  * @returns {Object} { success, message? }
  */
 const marcarLeida = async (idNotificacion, idUsuario) => {
     try {
         const notificacion = await prisma.notificacion.findUnique({
-            where: { id: idNotificacion }
+            where: { id_notificacion: idNotificacion }
         });
 
         if (!notificacion) {
@@ -67,10 +65,9 @@ const marcarLeida = async (idNotificacion, idUsuario) => {
         }
 
         await prisma.notificacion.update({
-            where: { id: idNotificacion },
+            where: { id_notificacion: idNotificacion },
             data: {
-                estado: 'leida',
-                fecha_lectura: new Date(),
+                leida: true,
             }
         });
 
@@ -83,16 +80,15 @@ const marcarLeida = async (idNotificacion, idUsuario) => {
 
 /**
  * Marcar todas las notificaciones como leídas para un usuario.
- * @param {number} idUsuario
+ * @param {string} idUsuario
  * @returns {Object} { success, count }
  */
 const marcarTodasLeidas = async (idUsuario) => {
     try {
         const result = await prisma.notificacion.updateMany({
-            where: { id_usuario: idUsuario, estado: 'pendiente' },
+            where: { id_usuario: idUsuario, leida: false },
             data: {
-                estado: 'leida',
-                fecha_lectura: new Date(),
+                leida: true,
             }
         });
 

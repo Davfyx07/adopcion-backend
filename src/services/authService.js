@@ -52,6 +52,39 @@ const enviarCorreoRecuperacion = async (destinatario, enlace) => {
     await transporter.sendMail(mailOptions);
 };
 
+const enviarCorreoVerificacion = async (destinatario, enlace) => {
+    const transporter = nodemailer.createTransport({
+        host: process.env.SMTP_HOST,
+        port: parseInt(process.env.SMTP_PORT || '587'),
+        secure: false,
+        auth: {
+            user: process.env.SMTP_USER,
+            pass: process.env.SMTP_PASS,
+        },
+    });
+
+    const mailOptions = {
+        from: `"Plataforma Adopción de Mascotas" <${process.env.SMTP_USER}>`,
+        to: destinatario,
+        subject: 'Confirma tu correo electrónico',
+        html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #333;">¡Bienvenido a FurMatch!</h2>
+          <p>Para poder iniciar sesión y completar tu perfil, necesitamos verificar tu dirección de correo electrónico.</p>
+          <p>Haz clic en el siguiente enlace para confirmar tu cuenta:</p>
+          <a href="${enlace}" 
+             style="display: inline-block; padding: 12px 24px; background-color: #4CAF50; 
+                    color: white; text-decoration: none; border-radius: 4px; margin: 16px 0;">
+            Verificar Correo
+          </a>
+          <p style="color: #666; font-size: 14px;">Este enlace expirará en <strong>24 horas</strong>.</p>
+        </div>
+      `,
+    };
+
+    await transporter.sendMail(mailOptions);
+};
+
 /**
  * Registrar un nuevo usuario.
  * Transacción atómica: crear usuario + aceptar términos + log auditoría.
@@ -96,7 +129,7 @@ const registerUser = async ({ email, password, role, ip }) => {
                         correo: email.toLowerCase(),
                         password_hash: passwordHash,
                         id_rol: idRol,
-                        estado_cuenta: 'perfil_incompleto',
+                        estado_cuenta: 'pendiente_verificacion',
                         ip_registro: ip,
                     }
                 });
@@ -129,6 +162,26 @@ const registerUser = async ({ email, password, role, ip }) => {
                     ip: ip,
                 }
             });
+
+            // 6. Generar token de verificación y enviar correo
+            const token = crypto.randomBytes(32).toString('hex');
+            const expires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 horas
+
+            await tx.verificacionEmail.create({
+                data: {
+                    id_usuario: user.id_usuario,
+                    token_hash: token,
+                    fecha_expiracion: expires,
+                    estado: 'pendiente',
+                }
+            });
+
+            const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
+            const enlace = `${baseUrl}/verify-email?token=${token}`;
+            
+            // Enviar correo sin bloquear la transacción si falla levemente, pero preferible usar await
+            // Si el correo falla, la transacción hace rollback y el usuario debe intentar de nuevo
+            await enviarCorreoVerificacion(email.toLowerCase(), enlace);
 
             return {
                 success: true,
@@ -175,6 +228,10 @@ const loginUser = async ({ email, password, ip }) => {
 
             if (!user) {
                 return { success: false, status: 401, message: 'Correo o contraseña incorrectos.' };
+            }
+
+            if (user.estado_cuenta === 'pendiente_verificacion') {
+                return { success: false, status: 403, message: 'Por favor verifica tu correo electrónico antes de iniciar sesión.' };
             }
 
             // 1. Verificar si la cuenta está bloqueada temporalmente
@@ -483,4 +540,57 @@ const logoutUser = async ({ token, ip }) => {
     }
 };
 
-module.exports = { registerUser, loginUser, forgotPassword, resetPassword, logoutUser };
+/**
+ * Verificar correo electrónico usando un token.
+ *
+ * @param {Object} params
+ * @param {string} params.token
+ * @param {string} params.ip
+ * @returns {Object} { success, status?, message }
+ */
+const verifyEmail = async ({ token, ip }) => {
+    try {
+        return await prisma.$transaction(async (tx) => {
+            const verification = await tx.verificacionEmail.findFirst({
+                where: {
+                    token_hash: token,
+                    estado: 'pendiente',
+                    fecha_expiracion: { gt: new Date() }
+                }
+            });
+
+            if (!verification) {
+                return { success: false, status: 400, message: 'Token inválido o expirado.' };
+            }
+
+            const { id_usuario, id_token } = verification;
+
+            await tx.usuario.update({
+                where: { id_usuario },
+                data: { estado_cuenta: 'perfil_incompleto' }
+            });
+
+            await tx.verificacionEmail.update({
+                where: { id_token },
+                data: { estado: 'usado' }
+            });
+
+            await tx.logAuditoria.create({
+                data: {
+                    id_autor: id_usuario,
+                    accion: 'VERIFICACION_EMAIL',
+                    entidad_afectada: 'Usuario',
+                    id_registro_afectado: id_usuario,
+                    ip: ip,
+                }
+            });
+
+            return { success: true, message: 'Correo verificado exitosamente.' };
+        });
+    } catch (err) {
+        console.error('[auth.service] Error en verifyEmail:', err.message);
+        throw err;
+    }
+};
+
+module.exports = { registerUser, loginUser, forgotPassword, resetPassword, logoutUser, verifyEmail };

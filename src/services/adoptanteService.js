@@ -88,7 +88,6 @@ const crearPerfilAdoptante = async ({ idUsuario, nombre_completo, whatsapp, ciud
                     foto_perfil: fotoUrl,
                     whatsapp_adoptante: whatsapp.trim(),
                     ciudad: ciudad.trim(),
-                    embedding: embedding.length > 0 ? JSON.stringify(embedding) : null,
                 }
             });
 

@@ -31,7 +31,7 @@ const crearMascota = async (req, res) => {
 
 const previsualizarMascota = async (req, res) => {
     try {
-        const id = parseInt(req.params.id);
+        const id = req.params.id; // Es UUID
         const mascota = await mascotaService.obtenerMascotaPorId(id);
 
         if (!mascota) {
@@ -56,7 +56,7 @@ const previsualizarMascota = async (req, res) => {
 
 const actualizarMascotaController = async (req, res) => {
     try {
-        const id = parseInt(req.params.id);
+        const id = req.params.id; // Es UUID
         const id_albergue = req.user.id;
         const ip = req.socket.remoteAddress || req.ip;
 
@@ -84,7 +84,7 @@ const actualizarMascotaController = async (req, res) => {
 
 const cambiarEstado = async (req, res) => {
     try {
-        const id = parseInt(req.params.id);
+        const id = req.params.id; // Es UUID
         const { estado, motivo } = req.body;
         const authUserId = req.user.id;
         const clientIp = req.socket.remoteAddress || req.ip;
@@ -184,7 +184,7 @@ const misMascotas = async (req, res) => {
 
 const eliminarMascotaController = async (req, res) => {
     try {
-        const id = parseInt(req.params.id);
+        const id = req.params.id; // Es UUID
         const idAlbergue = req.user.id;
         const { motivo } = req.body;
         console.log('[DELETE DEBUG] id:', id, 'idAlbergue:', idAlbergue, 'motivo:', motivo);

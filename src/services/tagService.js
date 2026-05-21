@@ -9,7 +9,6 @@ const getTags = async (estado) => {
     where,
     include: {
       opcion_tag: {
-        where: { estado: 'activo' },
         orderBy: { id_opcion: 'asc' },
       },
     },
@@ -189,10 +188,9 @@ const deleteOpcion = async (idTag, idOpcion, userId, ip) => {
       return { success: false, status: 404, message: 'Opción no encontrada para este tag.' };
     }
 
-    // Soft delete: marcar inactivo en vez de borrar
-    await tx.opcionTag.update({
+    // Hard delete: borrar opción directamente (la tabla no soporta soft-delete)
+    await tx.opcionTag.delete({
       where: { id_opcion: idOpcion },
-      data: { estado: 'inactivo' },
     });
 
     await tx.logAuditoria.create({

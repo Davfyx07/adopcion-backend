@@ -21,7 +21,11 @@ const calcularMatch = async (req, res) => {
 const obtenerMatches = async (req, res) => {
     try {
         const idAdoptante = req.user.id;
-        const result = await matchService.obtenerMatches(idAdoptante);
+        const limit = parseInt(req.query.limit) || 10;
+        const offset = parseInt(req.query.offset) || 0;
+        const estado = req.query.estado || null;
+        
+        const result = await matchService.obtenerMatches(idAdoptante, { limit, offset, estado });
 
         return res.status(200).json(result);
     } catch (error) {
@@ -36,7 +40,7 @@ const obtenerMatches = async (req, res) => {
 const descartarMascota = async (req, res) => {
     try {
         const idAdoptante = req.user.id;
-        const idMascota = parseInt(req.params.id_mascota);
+        const idMascota = req.params.id_mascota; // Es UUID, no entero
         const result = await matchService.descartarMascota(idAdoptante, idMascota);
 
         if (!result.success) {
@@ -53,8 +57,28 @@ const descartarMascota = async (req, res) => {
     }
 };
 
+const obtenerMatchPorId = async (req, res) => {
+    try {
+        const idAdoptante = req.user.id;
+        const idMatch = req.params.id_match;
+        const result = await matchService.obtenerMatchPorId(idAdoptante, idMatch);
+
+        if (!result.success) {
+            return res.status(result.status || 404).json(result);
+        }
+        return res.status(200).json(result);
+    } catch (error) {
+        console.error('[matchController] Error en obtenerMatchPorId:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Error interno al obtener el match.',
+        });
+    }
+};
+
 module.exports = {
     calcularMatch,
     obtenerMatches,
+    obtenerMatchPorId,
     descartarMascota,
 };

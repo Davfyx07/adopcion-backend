@@ -24,6 +24,7 @@ model Usuario {
   log_auditoria         LogAuditoria[]
   notificacion          Notificacion[]
   recuperacion_password RecuperacionPassword[]
+  verificacion_email    VerificacionEmail[]
   termino_aceptado      TerminoAceptado?
   rol                   Rol                    @relation(fields: [id_rol], references: [id_rol], onDelete: NoAction, onUpdate: NoAction)
 
@@ -290,4 +291,17 @@ model contacto_whatsapp {
 
   @@index([id_albergue], map: "idx_contacto_albergue")
   @@index([id_mascota], map: "idx_contacto_mascota")
+}
+
+model VerificacionEmail {
+  id_token         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id_usuario       String    @db.Uuid
+  token_hash       String
+  fecha_expiracion DateTime  @db.Timestamptz(6)
+  estado           String?   @default("pendiente") @db.VarChar(20)
+  fecha_creacion   DateTime? @default(now()) @db.Timestamptz(6)
+  usuario          Usuario   @relation(fields: [id_usuario], references: [id_usuario], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([id_usuario], map: "idx_verificacion_email_usuario")
+  @@map("verificacion_email")
 }

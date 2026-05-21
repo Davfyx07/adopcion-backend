@@ -9,6 +9,8 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+# Generar Prisma Client en tiempo de build para evitar que el contenedor en runtime necesite escribir en node_modules
+RUN npx prisma generate
 # Si usas NestJS o TS, descomenta la siguiente línea:
 # RUN npm run build 
 

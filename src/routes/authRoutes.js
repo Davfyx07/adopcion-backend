@@ -1,6 +1,6 @@
 const express = require('express');
 const rateLimit = require('express-rate-limit');
-const { register, login, forgotPassword, resetPassword, logout } = require('../controllers/authController');
+const { register, login, forgotPassword, resetPassword, logout, verifyEmail } = require('../controllers/authController');
 const {
     validateRegister,
     validateLogin,
@@ -21,7 +21,6 @@ const recoveryRateLimit = rateLimit({
  *     summary: Registro de un nuevo usuario
  *     description: Permite que un usuario nuevo cree su cuenta seleccionando rol (adoptante o albergue), validando correo, contraseña y aceptación de términos.
  *     tags: [Auth]
-
  *     requestBody:
  *       required: true
  *       content:
@@ -188,4 +187,33 @@ router.post('/reset-password', validateResetPassword, resetPassword);
  *         description: Token inválido
  */
 router.post('/logout', authMiddleware, logout);
+
+/**
+ * @swagger
+ * /api/auth/verify-email:
+ *   post:
+ *     summary: Verificar correo electrónico
+ *     description: Verifica el correo electrónico de un usuario recién registrado utilizando el token enviado por correo.
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - token
+ *             properties:
+ *               token:
+ *                 type: string
+ *                 description: Token de verificación recibido por correo
+ *     responses:
+ *       200:
+ *         description: Correo verificado exitosamente
+ *       400:
+ *         description: Token inválido o expirado
+ *       500:
+ *         description: Error interno del servidor
+ */
+router.post('/verify-email', verifyEmail);
 module.exports = router;

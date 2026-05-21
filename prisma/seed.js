@@ -126,20 +126,32 @@ const tagsData = [
 const opcionesMap = new Map(); // tagName -> [{valor, id_opcion}]
 
 for (const t of tagsData) {
-  const tag = await prisma.tag.upsert({
-    where: { nombre_tag: t.nombre_tag },
-    update: {
-      peso_matching: t.peso_matching ?? 0,
-      es_filtro_absoluto: t.es_filtro_absoluto ?? false,
-      categoria: t.categoria,
-    },
-    create: {
-      nombre_tag: t.nombre_tag,
-      categoria: t.categoria,
-      peso_matching: t.peso_matching ?? 0,
-      es_filtro_absoluto: t.es_filtro_absoluto ?? false,
-    },
+  // Buscar tag existente por nombre
+  let tag = await prisma.tag.findFirst({
+    where: { nombre_tag: t.nombre_tag }
   });
+  
+  // Si no existe, crear
+  if (!tag) {
+    tag = await prisma.tag.create({
+      data: {
+        nombre_tag: t.nombre_tag,
+        categoria: t.categoria,
+        peso_matching: t.peso_matching ?? 0,
+        es_filtro_absoluto: t.es_filtro_absoluto ?? false,
+      },
+    });
+  } else {
+    // Si existe, actualizar campos
+    tag = await prisma.tag.update({
+      where: { id_tag: tag.id_tag },
+      data: {
+        peso_matching: t.peso_matching ?? 0,
+        es_filtro_absoluto: t.es_filtro_absoluto ?? false,
+        categoria: t.categoria,
+      },
+    });
+  }
 
     const opciones = [];
     for (const valor of t.opciones) {
@@ -171,7 +183,6 @@ for (const t of tagsData) {
       perfil: {
         nombre_completo: 'Usuario Adoptante de Prueba',
         ciudad: 'Bogotá',
-        direccion: 'Calle 123 # 45-67, Bogotá',
         whatsapp_adoptante: '+573001234567',
         foto_perfil: 'https://picsum.photos/seed/adoptante/200/200',
       },
@@ -222,9 +233,7 @@ for (const t of tagsData) {
   }
 
   // Asignar tags a adoptantes base (incluyendo pruebas.adoptante@furmatch.local)
-  const adoptantesBase = await prisma.adoptante.findMany({
-    where: { id_usuario: { lte: 12 } },
-  });
+  const adoptantesBase = await prisma.adoptante.findMany();
   for (const adoptante of adoptantesBase) {
     const prefTags = [
       getOp('Tipo de animal', Math.floor(Math.random() * 3)),
@@ -237,9 +246,14 @@ for (const t of tagsData) {
       getOp('Experiencia previa', Math.floor(Math.random() * 3)),
     ];
     for (const op of prefTags) {
-      await prisma.adoptanteTag.create({
-        data: { id_usuario: adoptante.id_usuario, id_opcion: op.id_opcion },
-      }).catch(() => {});
+      const existingTag = await prisma.adoptanteTag.findFirst({
+        where: { id_usuario: adoptante.id_usuario, id_opcion: op.id_opcion },
+      });
+      if (!existingTag) {
+        await prisma.adoptanteTag.create({
+          data: { id_usuario: adoptante.id_usuario, id_opcion: op.id_opcion },
+        });
+      }
     }
     console.log(`🏷️  Tags asignados a adoptante ID ${adoptante.id_usuario}`);
   }
@@ -255,16 +269,26 @@ for (const t of tagsData) {
 
   const alberguesCreados = [];
   for (const a of alberguesData) {
-    const usuario = await prisma.usuario.create({
-      data: {
+    const usuario = await prisma.usuario.upsert({
+      where: { correo: a.correo },
+      update: {},
+      create: {
         correo: a.correo,
         password_hash: PASSWORD_HASH,
         id_rol: rolMap.albergue,
         estado_cuenta: 'activo',
       },
     });
-    const albergue = await prisma.albergue.create({
-      data: {
+    const albergue = await prisma.albergue.upsert({
+      where: { id_usuario: usuario.id_usuario },
+      update: {
+        nit: a.nit,
+        nombre_albergue: a.nombre_albergue,
+        whatsapp_actual: `+57${Math.floor(3000000000 + Math.random() * 999999999)}`,
+        descripcion: `${a.nombre_albergue} es una fundación sin ánimo de lucro dedicada al rescate y adopción responsable de mascotas en situación de calle.`,
+        logo: `https://picsum.photos/seed/${a.nit}/200/200`,
+      },
+      create: {
         id_usuario: usuario.id_usuario,
         nit: a.nit,
         nombre_albergue: a.nombre_albergue,
@@ -288,20 +312,28 @@ for (const t of tagsData) {
 
   const adoptantesCreados = [];
   for (const a of adoptantesData) {
-    const usuario = await prisma.usuario.create({
-      data: {
+    const usuario = await prisma.usuario.upsert({
+      where: { correo: a.correo },
+      update: {},
+      create: {
         correo: a.correo,
         password_hash: PASSWORD_HASH,
         id_rol: rolMap.adoptante,
         estado_cuenta: 'activo',
       },
     });
-    const adoptante = await prisma.adoptante.create({
-      data: {
+    const adoptante = await prisma.adoptante.upsert({
+      where: { id_usuario: usuario.id_usuario },
+      update: {
+        nombre_completo: a.nombre_completo,
+        ciudad: a.ciudad,
+        whatsapp_adoptante: `+57${Math.floor(3000000000 + Math.random() * 999999999)}`,
+        foto_perfil: `https://picsum.photos/seed/${usuario.id_usuario}/200/200`,
+      },
+      create: {
         id_usuario: usuario.id_usuario,
         nombre_completo: a.nombre_completo,
         ciudad: a.ciudad,
-        direccion: `Calle ${Math.floor(Math.random() * 100)} # ${Math.floor(Math.random() * 50)} - ${Math.floor(Math.random() * 20)}, ${a.ciudad}`,
         whatsapp_adoptante: `+57${Math.floor(3000000000 + Math.random() * 999999999)}`,
         foto_perfil: `https://picsum.photos/seed/${usuario.id_usuario}/200/200`,
       },
@@ -323,9 +355,14 @@ for (const t of tagsData) {
       getOp('Experiencia previa', Math.floor(Math.random() * 3)),
     ];
     for (const op of prefTags) {
-      await prisma.adoptanteTag.create({
-        data: { id_usuario: adoptante.id_usuario, id_opcion: op.id_opcion },
-      }).catch(() => {}); // ignorar duplicados
+      const existingTag = await prisma.adoptanteTag.findFirst({
+        where: { id_usuario: adoptante.id_usuario, id_opcion: op.id_opcion },
+      });
+      if (!existingTag) {
+        await prisma.adoptanteTag.create({
+          data: { id_usuario: adoptante.id_usuario, id_opcion: op.id_opcion },
+        });
+      }
     }
   }
 
@@ -717,14 +754,19 @@ for (const t of tagsData) {
   for (let i = 0; i < Math.min(3, mascotasExistentes.length); i++) {
     const adoptante = adoptantesCreados[i];
     const mascota = mascotasExistentes[i];
-    await prisma.match.create({
-      data: {
-        id_adoptante: adoptante.id_usuario,
-        id_mascota: mascota.id_mascota,
-        puntaje: (70 + Math.random() * 25).toFixed(2),
-        estado: 'pendiente',
-      },
+    const existingMatch = await prisma.match.findFirst({
+      where: { id_adoptante: adoptante.id_usuario, id_mascota: mascota.id_mascota },
     });
+    if (!existingMatch) {
+      await prisma.match.create({
+        data: {
+          id_adoptante: adoptante.id_usuario,
+          id_mascota: mascota.id_mascota,
+          score_compatibilidad: parseFloat((70 + Math.random() * 25).toFixed(2)),
+          tipo_interaccion: 'like',
+        },
+      });
+    }
     console.log(`❤️ Match creado: Adoptante ${adoptante.id_usuario} + Mascota ${mascota.id_mascota}`);
   }
 

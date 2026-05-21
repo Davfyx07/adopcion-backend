@@ -13,7 +13,7 @@ const isTokenBlacklisted = async (token) => {
             token_hash: tokenHash,
             fecha_expiracion: { gt: new Date() }
         },
-        select: { id: true }
+        select: { token_hash: true }
     });
 
     return result !== null;

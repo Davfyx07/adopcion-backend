@@ -52,7 +52,7 @@ const uploadImage = async (source, folder = 'adopcion') => {
         if (!cloudConfigured) {
             console.warn('[storage] Cloudinary no configurado. Usando URL mock para desarrollo.');
             console.warn('[storage] hasCloudName:', hasCloudName, 'hasCloudKey:', hasCloudKey, 'hasCloudSecret:', hasCloudSecret);
-            return `https://res.cloudinary.com/demo/image/upload/v1/${folder}/mock_${Date.now()}.jpg`;
+            return `https://picsum.photos/seed/${Date.now()}/800/800`;
         }
 
         const result = await cloudinary.uploader.upload(source, {

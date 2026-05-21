@@ -136,6 +136,35 @@ router.get('/',
 
 /**
  * @swagger
+ * /api/match/{id_match}:
+ *   get:
+ *     summary: Obtener detalle de un match específico
+ *     description: Retorna los detalles de un match por su ID.
+ *     tags: [Match]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id_match
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: ID del match
+ *     responses:
+ *       200:
+ *         description: Detalle del match
+ *       404:
+ *         description: Match no encontrado
+ */
+router.get('/:id_match',
+    authMiddleware,
+    authorizeRole(['adoptante']),
+    matchController.obtenerMatchPorId
+);
+
+/**
+ * @swagger
  * /api/match/descartar/{id_mascota}:
  *   post:
  *     summary: Descartar una mascota del matching

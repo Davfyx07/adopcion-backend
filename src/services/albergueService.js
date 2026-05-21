@@ -255,8 +255,66 @@ const updatePerfilAlbergue = async (userId, data, ip) => {
     }
 };
 
+const obtenerHistorialAdopciones = async (idAlbergue, { limit = 10, offset = 0 } = {}) => {
+    try {
+        const total = await prisma.adopcion.count({
+            where: { id_albergue: idAlbergue }
+        });
+
+        const adopciones = await prisma.adopcion.findMany({
+            where: { id_albergue: idAlbergue },
+            orderBy: { fecha_adopcion: 'desc' },
+            skip: offset,
+            take: limit,
+            include: {
+                adoptante: {
+                    select: {
+                        id_usuario: true,
+                        nombre_completo: true,
+                        ciudad: true,
+                        foto_perfil: true,
+                        usuario: { select: { correo: true } }
+                    }
+                },
+                mascota: {
+                    select: {
+                        id_mascota: true,
+                        nombre: true,
+                        mascota_foto: {
+                            orderBy: { orden: 'asc' }, take: 1, select: { url_foto: true }
+                        }
+                    }
+                }
+            }
+        });
+
+        const data = adopciones.map(a => ({
+            id_adopcion: a.id_adopcion,
+            fecha_adopcion: a.fecha_adopcion,
+            estado_proceso: a.estado_proceso,
+            score_final: a.score_final,
+            adoptante: a.adoptante,
+            mascota: {
+                id_mascota: a.mascota.id_mascota,
+                nombre: a.mascota.nombre,
+                foto: a.mascota.mascota_foto[0]?.url_foto || null
+            }
+        }));
+
+        return {
+            success: true,
+            data,
+            pagination: { total, limit, offset }
+        };
+    } catch (err) {
+        console.error('[albergueService] obtenerHistorialAdopciones:', err.message);
+        throw err;
+    }
+};
+
 module.exports = {
     createAlbergueProfile,
     getPerfilAlbergue,
     updatePerfilAlbergue,
+    obtenerHistorialAdopciones,
 };
