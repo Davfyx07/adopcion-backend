@@ -26,9 +26,16 @@ const getUsuarios = async (filtros) => {
 
   // Mapear al formato que espera el frontend
   return usuariosDB.map(u => {
-    let nombre = "Administrador";
-    if (u.adoptante) nombre = u.adoptante.nombre_completo;
-    if (u.albergue) nombre = u.albergue.nombre_albergue;
+    let nombre = "-";
+    if (u.rol?.nombre_rol === 'admin') {
+      nombre = "Administrador";
+    } else if (u.adoptante) {
+      nombre = u.adoptante.nombre_completo;
+    } else if (u.albergue) {
+      nombre = u.albergue.nombre_albergue;
+    } else {
+      nombre = "Sin perfil";
+    }
 
     return {
       id: u.id_usuario,
