@@ -14,16 +14,22 @@ if (!connectionString) {
     throw new Error('FATAL: La variable DATABASE_URL no está definida en el entorno (Azure App Service).');
 }
 
-if (!connectionString.startsWith('postgres://') && !connectionString.startsWith('postgresql://')) {
-    throw new Error('FATAL: DATABASE_URL debe empezar con postgres:// o postgresql://');
+let requireSsl = false;
+if (connectionString.includes('sslmode=require')) {
+    requireSsl = true;
+    connectionString = connectionString.replace('?sslmode=require', '');
+    connectionString = connectionString.replace('&sslmode=require', '');
+    // Limpiar uselibpqcompat si está
+    connectionString = connectionString.replace('?uselibpqcompat=true', '');
+    connectionString = connectionString.replace('&uselibpqcompat=true', '');
 }
 
-// Inyectar uselibpqcompat=true automáticamente si tiene sslmode=require pero no tiene uselibpqcompat
-if (connectionString.includes('sslmode=require') && !connectionString.includes('uselibpqcompat=true')) {
-    connectionString += '&uselibpqcompat=true';
+const poolConfig = { connectionString };
+if (requireSsl) {
+    poolConfig.ssl = { rejectUnauthorized: false };
 }
 
-const pool = new Pool({ connectionString });
+const pool = new Pool(poolConfig);
 
 // Verificar la conexión de red al iniciar
 pool.on('error', (err) => {
