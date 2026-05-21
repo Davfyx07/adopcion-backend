@@ -18,7 +18,11 @@ if (!connectionString.startsWith('postgres://') && !connectionString.startsWith(
     throw new Error('FATAL: DATABASE_URL debe empezar con postgres:// o postgresql://');
 }
 
-const pool = new Pool({ connectionString });
+const poolConfig = { connectionString };
+if (connectionString.includes('sslmode=require')) {
+    poolConfig.ssl = { rejectUnauthorized: false };
+}
+const pool = new Pool(poolConfig);
 
 // Verificar la conexión de red al iniciar
 pool.on('error', (err) => {
