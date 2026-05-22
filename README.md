@@ -164,3 +164,26 @@ git push -u origin feat/HU-AUTH-01-registro-usuario
 - Commits en español, formato: `feat:`, `fix:`, `docs:`
 - Cada feature en su propia rama: `tipo/HU-ID-descripcion`
 - Antes de pushear: `npm test` debe pasar
+
+---
+
+## ☁️ Despliegue en Azure (Web App for Containers)
+
+El backend está configurado para desplegarse automáticamente en **Azure App Service** mediante **GitHub Actions**.
+
+### Arquitectura de Despliegue
+1. **GitHub Actions (`backend-auth.yml`)**: Al hacer push a la rama `deploy`, el pipeline compila una imagen Docker de producción basada en `node:20-alpine`, instala las dependencias, genera el cliente de Prisma y publica la imagen en **GitHub Container Registry (GHCR)** con la etiqueta `latest`.
+2. **Azure App Service**: El servicio está configurado como un contenedor Docker (`DOCKER_REGISTRY_SERVER_URL` activo). Al finalizar el pipeline de GitHub, Azure es notificado para que descargue la nueva imagen de GHCR y reinicie el contenedor.
+
+### Notas Importantes de Producción
+- **Base de Datos (Azure PostgreSQL Flexible Server)**: Se utiliza `@prisma/adapter-pg` y `pg.Pool`. Para evitar timeouts por validación SSL estricta (`verify-full`), el backend inyecta automáticamente `ssl: { rejectUnauthorized: false }` si detecta `sslmode=require` en la variable de entorno `DATABASE_URL`.
+- **Esquema de Prisma**: En Prisma 7.8 (usado en producción), no se debe incluir `url = env("DATABASE_URL")` en `schema.prisma`. La conexión se gestiona 100% mediante el adaptador de código en `src/config/prisma.js`.
+
+---
+
+## 📖 Manual General de Uso
+
+1. **Login de Administrador**: Utiliza `admin@furmatch.local` para acceder a la gestión global. Al decodificar el token JWT devuelto, encontrarás los permisos elevados del administrador (el perfil incluye `"Admin"` como nombre para evitar fallos de validación en el frontend).
+2. **Carga de Imágenes**: Si las variables de Cloudinary no están configuradas, el sistema usa un "mock" y devolverá URLs aleatorias de `picsum.photos`. En producción (Azure), asegúrate de que las variables `CLOUD_NAME`, `CLOUD_KEY` y `CLOUD_SECRET` estén en la pestaña "Environment Variables" del App Service.
+3. **Manejo de Transacciones**: La mayoría de operaciones sensibles (como el registro simultáneo de Usuario y Adoptante) ocurren dentro de `$transaction`. Si un paso falla (ej. error enviando el correo SMTP), toda la base de datos revierte los cambios para mantener consistencia.
+4. **Soft-Delete**: Los modelos principales tienen un campo `deleted_at`. El backend filtra automáticamente los registros borrados en las consultas estándar.
