@@ -193,7 +193,7 @@ const registerUser = async ({ email, password, role, ip }) => {
                     status: user.estado_cuenta,
                 }
             };
-        });
+        }, { maxWait: 5000, timeout: 20000 });
     } catch (err) {
         // Si el error es un objeto de retorno (devolución controlada dentro de la transacción)
         if (err && err.__return) {
@@ -356,7 +356,7 @@ const loginUser = async ({ email, password, ip }) => {
                     token
                 }
             };
-        });
+        }, { maxWait: 5000, timeout: 20000 });
     } catch (err) {
         console.error('[auth.service] Error en login:', err.message);
         throw err;
@@ -414,7 +414,7 @@ const forgotPassword = async ({ email, ip }) => {
             await enviarCorreoRecuperacion(email, enlace);
 
             return { message: 'Enlace de recuperación enviado con éxito.' };
-        });
+        }, { maxWait: 5000, timeout: 20000 });
     } catch (err) {
         console.error('[auth.service] Error en forgotPassword:', err.message);
         throw err;
@@ -470,7 +470,7 @@ const resetPassword = async ({ token, newPassword, ip }) => {
             });
 
             return { success: true, message: 'Contraseña actualizada.' };
-        });
+        }, { maxWait: 5000, timeout: 20000 });
     } catch (err) {
         console.error('[auth.service] Error en resetPassword:', err.message);
         throw err;
@@ -533,7 +533,7 @@ const logoutUser = async ({ token, ip }) => {
             });
 
             return { success: true, status: 200, message: 'Logout exitoso.' };
-        });
+        }, { maxWait: 5000, timeout: 20000 });
     } catch (err) {
         console.error('[auth.service] Error en logout:', err.message);
         throw err;
@@ -586,7 +586,7 @@ const verifyEmail = async ({ token, ip }) => {
             });
 
             return { success: true, message: 'Correo verificado exitosamente.' };
-        });
+        }, { maxWait: 5000, timeout: 20000 });
     } catch (err) {
         console.error('[auth.service] Error en verifyEmail:', err.message);
         throw err;
@@ -654,7 +654,7 @@ const resendVerification = async ({ email, ip }) => {
             await enviarCorreoVerificacion(email.toLowerCase(), enlace);
 
             return { success: true, status: 200, message: 'Enlace de verificación reenviado con éxito. Revisa tu bandeja de entrada.' };
-        });
+        }, { maxWait: 5000, timeout: 20000 });
     } catch (err) {
         console.error('[auth.service] Error en resendVerification:', err.message);
         throw err;
