@@ -164,7 +164,8 @@ const verifyEmailController = async (req, res) => {
 
         return res.status(200).json({
             success: true,
-            message: result.message
+            message: result.message,
+            data: result.data
         });
     } catch (err) {
         console.error('[auth.controller] verifyEmail:', err.message);

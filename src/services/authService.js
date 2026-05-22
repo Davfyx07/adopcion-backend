@@ -565,9 +565,10 @@ const verifyEmail = async ({ token, ip }) => {
 
             const { id_usuario, id_token } = verification;
 
-            await tx.usuario.update({
+            const user = await tx.usuario.update({
                 where: { id_usuario },
-                data: { estado_cuenta: 'perfil_incompleto' }
+                data: { estado_cuenta: 'perfil_incompleto' },
+                include: { rol: true }
             });
 
             await tx.verificacionEmail.update({
@@ -585,7 +586,29 @@ const verifyEmail = async ({ token, ip }) => {
                 }
             });
 
-            return { success: true, message: 'Correo verificado exitosamente.' };
+            const payload = {
+                id: user.id_usuario,
+                role: user.rol.nombre_rol.toLowerCase(),
+                estado_cuenta: user.estado_cuenta
+            };
+
+            const jwtToken = jwt.sign(payload, process.env.JWT_SECRET, {
+                expiresIn: process.env.JWT_EXPIRES_IN || '24h',
+            });
+
+            return { 
+                success: true, 
+                message: 'Correo verificado exitosamente.',
+                data: {
+                    user: {
+                        id: user.id_usuario,
+                        email: user.correo,
+                        role: payload.role,
+                        estado_cuenta: user.estado_cuenta
+                    },
+                    token: jwtToken
+                }
+            };
         }, { maxWait: 5000, timeout: 20000 });
     } catch (err) {
         console.error('[auth.service] Error en verifyEmail:', err.message);
