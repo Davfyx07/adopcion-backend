@@ -1,4 +1,4 @@
-const { registerUser, loginUser, forgotPassword, resetPassword, logoutUser, verifyEmail } = require('../services/authService');
+const { registerUser, loginUser, forgotPassword, resetPassword, logoutUser, verifyEmail, resendVerification } = require('../services/authService');
 
 /**
  * POST /api/auth/register
@@ -175,11 +175,43 @@ const verifyEmailController = async (req, res) => {
     }
 };
 
+const resendVerificationController = async (req, res) => {
+    try {
+        const { email } = req.body;
+        const ip = req.ip || req.headers['x-forwarded-for'] || 'unknown';
+
+        if (!email) {
+            return res.status(400).json({ success: false, message: 'El correo es requerido.' });
+        }
+
+        const result = await resendVerification({ email, ip });
+
+        if (!result.success) {
+            return res.status(result.status || 400).json({
+                success: false,
+                message: result.message
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: result.message
+        });
+    } catch (err) {
+        console.error('[auth.controller] resendVerification:', err.message);
+        return res.status(500).json({
+            success: false,
+            message: 'Error al reenviar el correo de verificación.'
+        });
+    }
+};
+
 module.exports = {
     register,
     login,
     forgotPassword: forgotPasswordController,
     resetPassword: resetPasswordController,
     logout,
-    verifyEmail: verifyEmailController
+    verifyEmail: verifyEmailController,
+    resendVerification: resendVerificationController
 };

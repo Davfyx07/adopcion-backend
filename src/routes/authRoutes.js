@@ -1,6 +1,6 @@
 const express = require('express');
 const rateLimit = require('express-rate-limit');
-const { register, login, forgotPassword, resetPassword, logout, verifyEmail } = require('../controllers/authController');
+const { register, login, forgotPassword, resetPassword, logout, verifyEmail, resendVerification } = require('../controllers/authController');
 const {
     validateRegister,
     validateLogin,
@@ -216,4 +216,37 @@ router.post('/logout', authMiddleware, logout);
  *         description: Error interno del servidor
  */
 router.post('/verify-email', verifyEmail);
+
+/**
+ * @swagger
+ * /api/auth/resend-verification:
+ *   post:
+ *     summary: Reenviar correo de verificación
+ *     description: Genera un nuevo token de verificación y lo reenvía al correo del usuario, siempre que la cuenta siga en estado pendiente de verificación.
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 description: Correo electrónico del usuario
+ *     responses:
+ *       200:
+ *         description: Correo reenviado exitosamente (o mensaje genérico de seguridad)
+ *       400:
+ *         description: Cuenta ya verificada o correo no válido
+ *       500:
+ *         description: Error interno del servidor
+ *       429:
+ *         description: Demasiadas solicitudes (Rate Limit)
+ */
+router.post('/resend-verification', recoveryRateLimit, resendVerification);
+
 module.exports = router;

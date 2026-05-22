@@ -593,4 +593,72 @@ const verifyEmail = async ({ token, ip }) => {
     }
 };
 
-module.exports = { registerUser, loginUser, forgotPassword, resetPassword, logoutUser, verifyEmail };
+/**
+ * Reenviar correo de verificación.
+ * Genera un nuevo token, invalida los anteriores y reenvía el correo.
+ *
+ * @param {Object} params
+ * @param {string} params.email
+ * @param {string} params.ip
+ * @returns {Object} { success, status?, message }
+ */
+const resendVerification = async ({ email, ip }) => {
+    try {
+        return await prisma.$transaction(async (tx) => {
+            const user = await tx.usuario.findUnique({
+                where: { correo: email.toLowerCase() }
+            });
+
+            if (!user) {
+                // Mensaje genérico por seguridad
+                return { success: true, message: 'Si el correo está registrado y pendiente de verificación, recibirás un nuevo enlace pronto.' };
+            }
+
+            if (user.estado_cuenta !== 'pendiente_verificacion') {
+                return { success: false, status: 400, message: 'Esta cuenta ya se encuentra verificada o su estado no permite reenviar la verificación.' };
+            }
+
+            // Invalidar tokens anteriores pendientes
+            await tx.verificacionEmail.updateMany({
+                where: { id_usuario: user.id_usuario, estado: 'pendiente' },
+                data: { estado: 'usado' }
+            });
+
+            // Generar nuevo token
+            const token = crypto.randomBytes(32).toString('hex');
+            const expires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 horas
+
+            await tx.verificacionEmail.create({
+                data: {
+                    id_usuario: user.id_usuario,
+                    token_hash: token,
+                    fecha_expiracion: expires,
+                    estado: 'pendiente',
+                }
+            });
+
+            // Auditoría
+            await tx.logAuditoria.create({
+                data: {
+                    id_autor: user.id_usuario,
+                    accion: 'REENVIO_VERIFICACION',
+                    entidad_afectada: 'Usuario',
+                    id_registro_afectado: user.id_usuario,
+                    ip: ip,
+                }
+            });
+
+            const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
+            const enlace = `${baseUrl}/verify-email?token=${token}`;
+            
+            await enviarCorreoVerificacion(email.toLowerCase(), enlace);
+
+            return { success: true, status: 200, message: 'Enlace de verificación reenviado con éxito. Revisa tu bandeja de entrada.' };
+        });
+    } catch (err) {
+        console.error('[auth.service] Error en resendVerification:', err.message);
+        throw err;
+    }
+};
+
+module.exports = { registerUser, loginUser, forgotPassword, resetPassword, logoutUser, verifyEmail, resendVerification };
